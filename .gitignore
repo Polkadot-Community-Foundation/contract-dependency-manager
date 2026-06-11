@@ -4,6 +4,9 @@ src/apps/cli/src/generated/
 dist/
 src/lib/descriptors/generated/
 
+# PCF rescope-at-publish staging output (src/lib/env/scripts/rescope-pack.mjs)
+pack-output/
+
 .turbo/
 
 target/
