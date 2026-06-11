@@ -54,8 +54,25 @@ jobs:
           path: src/lib/env/pack-output/*.tgz
           if-no-files-found: error
 
-      - name: Publish via PCF npm-publish-automation
-        uses: Polkadot-Community-Foundation/npm-publish-automation/.github/actions/dispatch@main
+      # Dispatch inline (rather than the npm-publish-automation composite action) so this
+      # doesn't depend on resolving an action from a PRIVATE cross-repo (org private-action
+      # sharing is plan-gated). Uses only the public create-github-app-token + a gh api call.
+      - name: Mint App token (dispatch scope)
+        id: app-token
+        uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.PUBLISH_APP_ID }}
           private-key: ${{ secrets.PUBLISH_APP_PRIVATE_KEY }}
+          owner: Polkadot-Community-Foundation
+          repositories: npm-publish-automation
+
+      - name: Dispatch PCF npm-publish-automation
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          printf '{"ref":"main","inputs":{"repo":"%s","run_id":"%s","artifact_name":"packages"}}' \
+            "${{ github.repository }}" "${{ github.run_id }}" \
+          | gh api -X POST \
+              /repos/Polkadot-Community-Foundation/npm-publish-automation/actions/workflows/publish.yml/dispatches \
+              --input -
