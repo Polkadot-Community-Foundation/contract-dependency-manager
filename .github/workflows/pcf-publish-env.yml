@@ -1,0 +1,61 @@
+name: PCF publish env
+
+# Publishes @polkadot-community-foundation/cdm-env — the PCF-scoped CDM env package that carries the
+# deployed Summit/W3S registry address — via PCF's own npm-publish-automation.
+#
+# This is intentionally SEPARATE from the upstream Parity `release.yml` (which publishes @parity/*
+# through Parity's internal automation). The @parity/cdm-env package is kept UNCHANGED in-tree so the
+# fork stays merge-clean with `git merge upstream/main`; src/lib/env/scripts/rescope-pack.mjs stages a
+# @polkadot-community-foundation/cdm-env tarball at pack time. See:
+#   - summit-deployer-skills/guides/CDM_NPM_PUBLISHING.md
+#   - Polkadot-Community-Foundation/npm-publish-automation (allowlist + token live ONLY there)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Published version for @polkadot-community-foundation/cdm-env"
+        required: false
+        default: "2.1.0"
+
+permissions:
+  contents: read
+
+jobs:
+  publish-env:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
+      # The env package's DTS build needs its workspace dep (@parity/cdm-utils) built first.
+      - name: Build env deps
+        run: pnpm --filter @parity/cdm-utils build
+
+      - name: Stage @polkadot-community-foundation/cdm-env tarball
+        working-directory: src/lib/env
+        env:
+          PCF_ENV_VERSION: ${{ inputs.version }}
+        run: node scripts/rescope-pack.mjs
+
+      - name: Upload packages artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: src/lib/env/pack-output/*.tgz
+          if-no-files-found: error
+
+      - name: Publish via PCF npm-publish-automation
+        uses: Polkadot-Community-Foundation/npm-publish-automation/.github/actions/dispatch@main
+        with:
+          app-id: ${{ secrets.PUBLISH_APP_ID }}
+          private-key: ${{ secrets.PUBLISH_APP_PRIVATE_KEY }}
