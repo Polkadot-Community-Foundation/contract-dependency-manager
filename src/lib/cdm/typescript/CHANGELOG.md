@@ -1,5 +1,13 @@
 # @dotdm/cdm
 
+## 0.6.19
+
+### Patch Changes
+
+- Updated dependencies [bc54731]
+  - @parity/cdm-env@2.0.6
+  - @parity/cdm-builder@3.1.6
+
 ## 0.6.18
 
 ### Patch Changes
