@@ -1,0 +1,83 @@
+name: PCF publish cli
+
+# Publishes @polkadot-community-foundation/cdm-cli — the PCF-scoped CDM CLI (`cdm`), bundled into a
+# single self-contained node executable that bakes in the deployed Summit/W3S registry address — via
+# PCF's own npm-publish-automation.
+#
+# This is intentionally SEPARATE from the upstream Parity `release.yml`. The @parity/cdm-cli package
+# is kept UNCHANGED in-tree so the fork stays merge-clean with `git merge upstream/main`;
+# src/apps/cli/scripts/rescope-pack.mjs bundles + stages a @polkadot-community-foundation/cdm-cli
+# tarball at pack time. Unlike cdm-env (ships dist/ + external @parity/* deps), the CLI is BUNDLED
+# because its in-tree workspace deps are ahead of npm — see the script header. See:
+#   - summit-deployer-skills/guides/PCF_NPM_PUBLISHING.md
+#   - Polkadot-Community-Foundation/npm-publish-automation (allowlist + token live ONLY there)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Published version for @polkadot-community-foundation/cdm-cli"
+        required: false
+        default: "0.8.22"
+
+permissions:
+  contents: read
+
+jobs:
+  publish-cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
+      # The bundle inlines the in-tree workspace libs; cdm-builder + cdm-codegen must be built first
+      # (cdm-env + cdm-utils are pulled in transitively as their deps).
+      - name: Build CLI workspace deps
+        run: pnpm --filter "@parity/cdm-builder..." --filter "@parity/cdm-codegen..." build
+
+      - name: Stage @polkadot-community-foundation/cdm-cli tarball
+        working-directory: src/apps/cli
+        env:
+          PCF_CLI_VERSION: ${{ inputs.version }}
+        run: node scripts/rescope-pack.mjs
+
+      - name: Upload packages artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: src/apps/cli/pack-output/*.tgz
+          if-no-files-found: error
+
+      # Dispatch inline (rather than the npm-publish-automation composite action) so this
+      # doesn't depend on resolving an action from a PRIVATE cross-repo (org private-action
+      # sharing is plan-gated). Uses only the public create-github-app-token + a gh api call.
+      - name: Mint App token (dispatch scope)
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.PUBLISH_APP_ID }}
+          private-key: ${{ secrets.PUBLISH_APP_PRIVATE_KEY }}
+          owner: Polkadot-Community-Foundation
+          repositories: npm-publish-automation
+
+      - name: Dispatch PCF npm-publish-automation
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          printf '{"ref":"main","inputs":{"repo":"%s","run_id":"%s","artifact_name":"packages"}}' \
+            "${{ github.repository }}" "${{ github.run_id }}" \
+          | gh api -X POST \
+              /repos/Polkadot-Community-Foundation/npm-publish-automation/actions/workflows/publish.yml/dispatches \
+              --input -
