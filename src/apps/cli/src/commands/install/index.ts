@@ -9,7 +9,6 @@ import {
     getChainPreset,
     getRegistryAddress,
     DEFAULT_NODE_URL,
-    resolveQueryOrigin,
 } from "@parity/cdm-env";
 import {
     CONTRACTS_REGISTRY_ABI,
@@ -96,17 +95,18 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
     await chainClient.raw.assetHub.getChainSpecData();
     sp.succeed();
 
+    // No read origin: `install` only calls public registry view methods, so it
+    // uses pallet-revive's mapping-free query fallback (the same path the web
+    // frontend reads with). Passing an ss58 `defaultOrigin` would require that
+    // account to be mapped on-chain or the substrate `ReviveApi::call` read
+    // fails with `Revive.AccountUnmapped` — which broke consumers on live chains
+    // (e.g. Summit) whose account is unmapped, or who have no saved account at
+    // all (the old `resolveQueryOrigin` fallback was the unmapped ALICE_SS58).
     const registry = await createContractFromClient(
         chainClient.raw.assetHub,
         chainClient.descriptors.assetHub,
         registryAddress as HexString,
         CONTRACTS_REGISTRY_ABI,
-        {
-            defaultOrigin: resolveQueryOrigin({
-                chainName: opts.name,
-                assethubUrl: opts.assethubUrl,
-            }),
-        },
     );
     const ipfs = connectIpfsGateway(opts.ipfsGatewayUrl);
 
