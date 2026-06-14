@@ -10,7 +10,9 @@
     "dependencies": {
         "@parity/cdm-builder": "workspace:*",
         "@parity/cdm-env": "workspace:*",
-        "@parity/cdm-utils": "workspace:*"
+        "@parity/cdm-utils": "workspace:*",
+        "@parity/product-sdk-contracts": "catalog:",
+        "polkadot-api": "catalog:"
     },
     "devDependencies": {
         "@types/bun": "catalog:",
