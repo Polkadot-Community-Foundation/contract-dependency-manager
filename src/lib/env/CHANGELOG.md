@@ -5,6 +5,7 @@
 ### Patch Changes
 
 - bc54731: Set the W3S registry address.
+- 083bc41: Add the W3S registry address to the environment registry.
 
 ## 2.0.5
 
