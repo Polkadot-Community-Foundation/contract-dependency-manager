@@ -44,15 +44,15 @@ pnpm turbo build --filter=@parity/cdm-frontend
 
 export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=8192"
 
-# The Bulletin upload (worker) reads --suri, but the DotNS owner leg
-# (setContenthash on contracts.dot) reads the MNEMONIC / DOTNS_MNEMONIC env var
-# (src/dotns.ts) — without it that step falls back to the interactive
-# phone/SSO signer and aborts in CI. Export it so both legs sign headlessly.
-export MNEMONIC="$SURI"
-
+# Use --mnemonic (NOT --suri): --mnemonic is the DotNS *owner* key, which gives
+# signerMode "direct" (5Fk8 storage — Summit Bulletin rejects the pool signer)
+# AND signs setContenthash headlessly. --suri only sets the upload worker + pool
+# mode and wires a session signer that forces the interactive phone prompt for
+# the owner write (it aborts in CI). This is the suite-wide "--mnemonic FLAG for
+# direct Bulletin upload" rule (see simple-survey / webviews).
 polkadot-app-deploy \
     --env "$ENV_ID" \
-    --suri "$SURI" \
+    --mnemonic "$SURI" \
     "$FRONTEND_DIST" \
     "$DOMAIN" \
     "$@"
