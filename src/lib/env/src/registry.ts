@@ -7,7 +7,7 @@ const LOCAL_REGISTRY_ADDRESS = "";
 // PCF-owned CDM ContractRegistry on AH-next 1500. Empty until PCF deploys its
 // own registry there (deploy-registry) — distinct from PASEO_REGISTRY_ADDRESS,
 // which is the pre-existing (non-PCF) registry the plain `paseo` preset uses.
-const PASEO_NEXT_REGISTRY_ADDRESS = "";
+const PASEO_NEXT_REGISTRY_ADDRESS = "0x59b0245778917af55224e5f8fb55f7f8d452619f";
 
 export function getRegistryAddress(name = "paseo"): string {
     if (name === "paseo-next") {
