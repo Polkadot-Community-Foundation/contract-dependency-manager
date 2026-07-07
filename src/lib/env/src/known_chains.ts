@@ -44,6 +44,25 @@ const KNOWN_CHAINS = {
             },
         ],
     },
+    // PCF-owned re-home: same Paseo Next interim chains as `paseo`, but resolves
+    // through PCF's OWN CDM ContractRegistry (registryAddress empty until deployed).
+    // NOTE: shares assethubUrl with `paseo`, so findKnownChainByAssetHubUrl (which
+    // returns the first match) still resolves that URL to `paseo` — select this
+    // preset explicitly by name (`-n paseo-next`).
+    "paseo-next": {
+        assethubUrl: PASEO_ASSET_HUB_URL,
+        bulletinUrl: BULLETIN_RPCS.paseo[0],
+        ipfsGatewayUrl: PASEO_IPFS_GATEWAY_URL,
+        registryAddress: getRegistryAddress("paseo-next"),
+        productSdkEnvironment: "paseo",
+        faucets: [
+            { label: "Asset Hub", url: "https://faucet.polkadot.io/?parachain=1500" },
+            {
+                label: "Bulletin",
+                url: "https://paritytech.github.io/polkadot-bulletin-chain/authorizations?tab=faucet",
+            },
+        ],
+    },
     w3s: {
         assethubUrl: "wss://summit-asset-hub-rpc.polkadot.io",
         bulletinUrl: "wss://summit-bulletin-rpc.polkadot.io",
@@ -62,6 +81,7 @@ const KNOWN_CHAINS = {
 export type KnownChainName = keyof typeof KNOWN_CHAINS;
 
 export function normalizeChainName(name: string): KnownChainName | "custom" | undefined {
+    if (name === "paseo-next") return "paseo-next";
     if (name === "paseo-next-v2" || name === "paseo-v2") return "paseo";
     if (name === "paseo" || name === "polkadot" || name === "w3s" || name === "local") {
         return name;
