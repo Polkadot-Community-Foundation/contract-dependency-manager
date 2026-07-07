@@ -1,5 +1,22 @@
 # @dotdm/cdm
 
+## 0.6.22
+
+### Patch Changes
+
+- 79fbc58: Refresh Product SDK packages to the 0.17 release line and align `polkadot-api` with the SDK's required version so contract runtime types resolve against a single PAPI instance.
+- Updated dependencies [79fbc58]
+  - @parity/cdm-env@2.0.8
+  - @parity/cdm-builder@3.1.9
+
+## 0.6.21
+
+### Patch Changes
+
+- Updated dependencies [40f6516]
+  - @parity/cdm-env@2.0.7
+  - @parity/cdm-builder@3.1.8
+
 ## 0.6.20
 
 ### Patch Changes
