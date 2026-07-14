@@ -11,11 +11,14 @@ catalog:
   polkadot-api: ^2.1.7
   "@polkadot-api/sdk-ink": ^0.7.0
   "@parity/bulletin-sdk": ^0.3.0
-  "@parity/product-sdk-chain-client": 0.7.7
+  # devnet-capable PCF-scoped product-sdk (rescoped-identical to @parity, carry
+  # the `devnet` environment + devnet chain descriptors). Aliased via npm: so the
+  # existing `@parity/product-sdk-*` import paths keep resolving unchanged.
+  "@parity/product-sdk-chain-client": "npm:@polkadot-community-foundation/product-sdk-chain-client@0.7.8"
   "@parity/product-sdk-cloud-storage": 0.6.7
   "@parity/product-sdk-contracts": 0.8.3
-  "@parity/product-sdk-descriptors": 0.6.2
-  "@parity/product-sdk-host": 0.12.0
+  "@parity/product-sdk-descriptors": "npm:@polkadot-community-foundation/product-sdk-descriptors@0.6.2"
+  "@parity/product-sdk-host": "npm:@polkadot-community-foundation/product-sdk-host@0.12.1"
   "@parity/product-sdk-keys": 0.3.13
   "@parity/product-sdk-signer": 0.9.0
   "@parity/product-sdk-tx": 0.2.17
