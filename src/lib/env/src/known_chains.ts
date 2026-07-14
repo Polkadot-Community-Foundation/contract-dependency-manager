@@ -70,6 +70,17 @@ const KNOWN_CHAINS = {
         registryAddress: getRegistryAddress("w3s"),
         productSdkEnvironment: "summit",
     },
+    // Public products devnet = standard public Paseo (Asset Hub para 1000,
+    // Bulletin para 1010). A DIFFERENT chain from `paseo`/`paseo-next`, which
+    // point at paseo-asset-hub-NEXT. registryAddress empty until PCF deploys its
+    // own CDM ContractRegistry there (cdm deploy --bootstrap).
+    devnet: {
+        assethubUrl: "wss://asset-hub-paseo-rpc.n.dwellir.com",
+        bulletinUrl: "wss://bulletin-paseo.tservices.es:8443",
+        ipfsGatewayUrl: "https://bullet.sik.rocks/ipfs",
+        registryAddress: getRegistryAddress("devnet"),
+        productSdkEnvironment: "paseo",
+    },
     local: {
         assethubUrl: "ws://127.0.0.1:10020",
         bulletinUrl: "ws://127.0.0.1:10030",
@@ -83,6 +94,7 @@ export type KnownChainName = keyof typeof KNOWN_CHAINS;
 export function normalizeChainName(name: string): KnownChainName | "custom" | undefined {
     if (name === "paseo-next") return "paseo-next";
     if (name === "paseo-next-v2" || name === "paseo-v2") return "paseo";
+    if (name === "devnet") return "devnet";
     if (name === "paseo" || name === "polkadot" || name === "w3s" || name === "local") {
         return name;
     }

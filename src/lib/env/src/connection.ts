@@ -71,6 +71,8 @@ export interface CdmChainEndpoints {
 const DEPLOY_CHAIN_DESCRIPTORS = {
     paseo: { assetHub: paseo_asset_hub, bulletin: paseo_bulletin },
     "paseo-next": { assetHub: paseo_asset_hub, bulletin: paseo_bulletin },
+    // Public Paseo has no dedicated product-sdk descriptor; reuse paseo (NEXT).
+    devnet: { assetHub: paseo_asset_hub, bulletin: paseo_bulletin },
     w3s: { assetHub: summit_asset_hub, bulletin: summit_bulletin },
     local: { assetHub: paseo_asset_hub, bulletin: paseo_bulletin },
 } as const;
@@ -79,6 +81,7 @@ const ASSET_HUB_DESCRIPTORS = {
     polkadot: polkadot_asset_hub,
     paseo: paseo_asset_hub,
     "paseo-next": paseo_asset_hub,
+    devnet: paseo_asset_hub,
     w3s: summit_asset_hub,
     local: paseo_asset_hub,
 } as const;
@@ -87,7 +90,7 @@ function resolveExplicitChainName(chainName: string): KnownChainName | "custom" 
     const normalized = normalizeChainName(chainName);
     if (!normalized) {
         throw new Error(
-            `Unknown chain "${chainName}". Valid names: polkadot, paseo, paseo-next, w3s, local, custom`,
+            `Unknown chain "${chainName}". Valid names: polkadot, paseo, paseo-next, devnet, w3s, local, custom`,
         );
     }
     return normalized;
@@ -103,7 +106,7 @@ function resolveDeployDescriptors(chainName: string | undefined) {
     const descriptorChain = normalized && normalized !== "custom" ? normalized : "paseo";
     if (descriptorChain === "polkadot") {
         throw new Error(
-            'CDM deploy connections are only available for "paseo", "w3s", and "local"; product-sdk does not publish a Polkadot Bulletin descriptor yet.',
+            'CDM deploy connections are only available for "paseo", "paseo-next", "devnet", "w3s", and "local"; product-sdk does not publish a Polkadot Bulletin descriptor yet.',
         );
     }
 
