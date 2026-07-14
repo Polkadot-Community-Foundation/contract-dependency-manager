@@ -37,7 +37,10 @@ const { values: opts } = parseArgs({
         name: { type: "string", short: "n", default: "devnet" },
         suri: { type: "string" },
         "read-as": { type: "string" },
-        "cdm-json": { type: "string", default: "/home/alemart/Projects/PCF/dotns-sdk/packages/ui/cdm.json" },
+        "cdm-json": {
+            type: "string",
+            default: "/home/alemart/Projects/PCF/dotns-sdk/packages/ui/cdm.json",
+        },
         execute: { type: "boolean", default: false },
     },
 });
@@ -61,7 +64,8 @@ const rawCdm = JSON.parse(readFileSync(opts["cdm-json"]!, "utf8"));
 const contractsBucket: Record<string, any> = Object.values(rawCdm.contracts ?? {})[0] ?? {};
 function abiFor(pkg: string): any[] {
     const abi = contractsBucket[pkg]?.abi;
-    if (!Array.isArray(abi) || abi.length === 0) throw new Error(`No ABI for ${pkg} in ${opts["cdm-json"]}`);
+    if (!Array.isArray(abi) || abi.length === 0)
+        throw new Error(`No ABI for ${pkg} in ${opts["cdm-json"]}`);
     return abi;
 }
 
@@ -81,7 +85,9 @@ function resolveSigner() {
     if (opts.suri) return prepareSignerFromSuri(opts.suri);
     const account = getAccount(chainName);
     if (account) return prepareSignerFromMnemonic(account.mnemonic);
-    throw new Error(`No signer: pass --suri "<5Fk8 mnemonic>" or save an account (cdm init -n ${chainName}).`);
+    throw new Error(
+        `No signer: pass --suri "<5Fk8 mnemonic>" or save an account (cdm init -n ${chainName}).`,
+    );
 }
 
 const preset = getChainPreset(chainName);
@@ -98,7 +104,11 @@ const chainClient = await createCdmChainClient(chainName);
 await chainClient.raw.assetHub.getChainSpecData();
 console.log("Connected.\n");
 if (!dryRun && signer) {
-    try { await chainClient.assetHub.tx.Revive.map_account().signAndSubmit(signer); } catch { /* mapped */ }
+    try {
+        await chainClient.assetHub.tx.Revive.map_account().signAndSubmit(signer);
+    } catch {
+        /* mapped */
+    }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -115,20 +125,48 @@ const plan: Step[] = [];
 for (const [pkg, addr] of Object.entries(DOTNS_DEVNET)) {
     const q = assertQuery(await registry.getAddress.query(pkg), `getAddress(${pkg})`);
     const cur = unwrapOption<string>(q.value);
-    if (cur && lc(cur) === lc(addr)) plan.push({ name: pkg, address: addr, action: "skip", note: "already registered to this address" });
-    else if (cur) plan.push({ name: pkg, address: addr, action: "publish", note: `currently ${cur} → append new version → ${addr}` });
-    else plan.push({ name: pkg, address: addr, action: "publish", note: "not registered → fresh publish" });
+    if (cur && lc(cur) === lc(addr))
+        plan.push({
+            name: pkg,
+            address: addr,
+            action: "skip",
+            note: "already registered to this address",
+        });
+    else if (cur)
+        plan.push({
+            name: pkg,
+            address: addr,
+            action: "publish",
+            note: `currently ${cur} → append new version → ${addr}`,
+        });
+    else
+        plan.push({
+            name: pkg,
+            address: addr,
+            action: "publish",
+            note: "not registered → fresh publish",
+        });
 }
 
 console.log("Plan:");
-for (const p of plan) console.log(`  [${p.action === "publish" ? "PUBLISH" : "skip   "}] ${p.name}  ${p.address}\n           ${p.note}`);
+for (const p of plan)
+    console.log(
+        `  [${p.action === "publish" ? "PUBLISH" : "skip   "}] ${p.name}  ${p.address}\n           ${p.note}`,
+    );
 const toPublish = plan.filter((p) => p.action === "publish");
 
 if (dryRun) {
-    console.log(`\nDRY RUN complete. ${toPublish.length} name(s) would be published. Re-run: --execute --suri "<5Fk8>"`);
-    chainClient.destroy(); process.exit(0);
+    console.log(
+        `\nDRY RUN complete. ${toPublish.length} name(s) would be published. Re-run: --execute --suri "<5Fk8>"`,
+    );
+    chainClient.destroy();
+    process.exit(0);
 }
-if (!toPublish.length) { console.log("\nNothing to publish."); chainClient.destroy(); process.exit(0); }
+if (!toPublish.length) {
+    console.log("\nNothing to publish.");
+    chainClient.destroy();
+    process.exit(0);
+}
 if (!signer) throw new Error("Execute requires --suri.");
 
 const finalized = await chainClient.raw.assetHub.getFinalizedBlock();
