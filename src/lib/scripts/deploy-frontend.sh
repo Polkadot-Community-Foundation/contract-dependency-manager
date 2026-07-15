@@ -30,14 +30,14 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd -- "$SCRIPT_DIR/../../.." && pwd)"
 FRONTEND_DIST="$ROOT/src/apps/frontend/dist"
 DOMAIN="contracts.dot"
-ENV_ID="${BULLETIN_DEPLOY_ENV:-summit}"
+ENV_ID="${BULLETIN_DEPLOY_ENV:-devnet}"
 
 cd "$ROOT"
 
 if [[ "${SKIP_BULLETIN_INSTALL:-0}" != "1" ]]; then
     # PCF fork of bulletin-deploy (renamed); pinned to a known-good Summit-capable
     # release that ships under the @polkadot-community-foundation scope.
-    npm install -g @polkadot-community-foundation/polkadot-app-deploy@0.11.2
+    npm install -g @polkadot-community-foundation/polkadot-app-deploy@0.12.1
 fi
 
 pnpm turbo build --filter=@parity/cdm-frontend
