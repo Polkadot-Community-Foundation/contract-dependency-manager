@@ -1,9 +1,10 @@
 import { getRegistryAddress, type ProductSdkEnvironment } from "@parity/cdm-env/registry";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import { summit_asset_hub } from "@parity/product-sdk-descriptors/summit-asset-hub";
+import { devnet_asset_hub } from "@parity/product-sdk-descriptors/devnet-asset-hub";
 
-export type NetworkKey = "paseo" | "w3s";
-type AssetHubDescriptor = typeof paseo_asset_hub | typeof summit_asset_hub;
+export type NetworkKey = "paseo" | "w3s" | "devnet";
+type AssetHubDescriptor = typeof paseo_asset_hub | typeof summit_asset_hub | typeof devnet_asset_hub;
 
 export interface NetworkConfig {
     key: NetworkKey;
@@ -37,9 +38,20 @@ export const NETWORKS: Record<NetworkKey, NetworkConfig> = {
         assetHubDescriptor: summit_asset_hub,
         registryAddress: registryAddressFor("w3s"),
     },
+    devnet: {
+        key: "devnet",
+        label: "Devnet",
+        installName: "devnet",
+        productSdkEnvironment: "devnet",
+        assetHubDescriptor: devnet_asset_hub,
+        // PCF-owned CDM ContractRegistry on the public products devnet (Paseo AH
+        // 1000). Sourced from @parity/cdm-env's devnet preset — keep in sync with
+        // DEVNET.md / @parity/cdm-env registry.ts (0x59b0245778917af55224e5f8fb55f7f8d452619f).
+        registryAddress: registryAddressFor("devnet"),
+    },
 };
 
-export const DEFAULT_NETWORK: NetworkKey = "paseo";
+export const DEFAULT_NETWORK: NetworkKey = "devnet";
 export const NETWORK_OPTIONS = Object.values(NETWORKS);
 
 export function resolveNetworkKey(value: string | null | undefined): NetworkKey | null {
