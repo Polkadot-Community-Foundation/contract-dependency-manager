@@ -72,12 +72,16 @@ const KNOWN_CHAINS = {
     },
     // Public products devnet = standard public Paseo (Asset Hub para 1000,
     // Bulletin para 1010). A DIFFERENT chain from `paseo`/`paseo-next`, which
-    // point at paseo-asset-hub-NEXT. registryAddress empty until PCF deploys its
-    // own CDM ContractRegistry there (cdm deploy --bootstrap).
+    // point at paseo-asset-hub-NEXT.
+    //
+    // ipfsGatewayUrl is the Kubo node PCF runs alongside the devnet Bulletin
+    // collator. The collator speaks Bitswap only and does not announce to the
+    // public IPFS DHT, so Bulletin content is NOT reachable from a public
+    // gateway — metadata fetches must go through this one.
     devnet: {
         assethubUrl: "wss://asset-hub-paseo-rpc.n.dwellir.com",
         bulletinUrl: "wss://bulletin-paseo.tservices.es:8443",
-        ipfsGatewayUrl: "https://bullet.sik.rocks/ipfs",
+        ipfsGatewayUrl: "https://devnet-ipfs.api.polkadotcommunity.foundation/ipfs",
         registryAddress: getRegistryAddress("devnet"),
         productSdkEnvironment: "paseo",
     },
