@@ -33,7 +33,7 @@ const PASEO_IPFS_GATEWAY_URL = "https://paseo-bulletin-next-ipfs.polkadot.io/ipf
 const DEVNET_ASSET_HUB_URL = "wss://asset-hub-paseo-rpc.n.dwellir.com";
 const DEVNET_IPFS_GATEWAY_URL = "https://ipfs.io/ipfs";
 
-const KNOWN_CHAINS = {
+export const KNOWN_CHAINS = {
     polkadot: {
         assethubUrl: "wss://polkadot-asset-hub-rpc.polkadot.io",
         bulletinUrl: "wss://polkadot-bulletin-rpc.polkadot.io",
@@ -81,15 +81,7 @@ export type KnownChainName = keyof typeof KNOWN_CHAINS;
 
 export function normalizeChainName(name: string): KnownChainName | "custom" | undefined {
     if (name === "paseo-next-v2" || name === "paseo-v2") return "paseo";
-    if (
-        name === "paseo" ||
-        name === "polkadot" ||
-        name === "devnet" ||
-        name === "w3s" ||
-        name === "local"
-    ) {
-        return name;
-    }
+    if (Object.hasOwn(KNOWN_CHAINS, name)) return name as KnownChainName;
     if (name === "custom") return "custom";
 }
 
@@ -132,5 +124,13 @@ if (import.meta.vitest) {
         expect(isKnownChainPreset("devnet")).toBe(true);
         expect(normalizeChainName("paseo-next-v2")).toBe("paseo");
         expect(normalizeChainName("paseo-v2")).toBe("paseo");
+    });
+
+    test("normalizeChainName accepts every KNOWN_CHAINS key and custom, and rejects typos", () => {
+        for (const name of Object.keys(KNOWN_CHAINS)) {
+            expect(normalizeChainName(name)).toBe(name);
+        }
+        expect(normalizeChainName("custom")).toBe("custom");
+        expect(normalizeChainName("pasoe")).toBeUndefined();
     });
 }

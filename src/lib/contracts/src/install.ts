@@ -63,9 +63,15 @@ export interface InstallContractsOptions {
     onEvent?: (event: InstallEvent) => void;
 }
 
+/**
+ * Detects viem's `AbiDecodingZeroDataError` ('Cannot decode zero data ("0x")…'),
+ * which is what querying a nonexistent contract entry surfaces as. Deliberately
+ * narrow — matching on a bare "0x" would misreport almost any RPC error
+ * (hex hashes/addresses in the message) as "contract not found".
+ */
 function isRegistryQueryError(err: unknown): boolean {
     const msg = err instanceof Error ? err.message : String(err);
-    return msg.includes("zero data") || msg.includes("0x") || msg.includes("AbiDecoding");
+    return msg.includes("zero data") || msg.includes("AbiDecoding");
 }
 
 function unwrapOption<T>(val: unknown): T | undefined {
@@ -96,7 +102,7 @@ async function queryLatest(
         versionResult = await registry.getVersionCount.query(library);
     } catch (err) {
         if (isRegistryQueryError(err)) {
-            throw new Error(`Contract "${library}" not found in registry`);
+            throw new Error(`Contract "${library}" not found in registry`, { cause: err });
         }
         throw err;
     }
@@ -113,7 +119,9 @@ async function queryLatest(
         metaResult = await registry.getMetadataUri.query(library);
     } catch (err) {
         if (isRegistryQueryError(err)) {
-            throw new Error(`Failed to fetch metadata for "${library}" from registry`);
+            throw new Error(`Failed to fetch metadata for "${library}" from registry`, {
+                cause: err,
+            });
         }
         throw err;
     }
@@ -130,7 +138,9 @@ async function queryLatest(
         addrResult = await registry.getAddress.query(library);
     } catch (err) {
         if (isRegistryQueryError(err)) {
-            throw new Error(`Failed to fetch address for "${library}" from registry`);
+            throw new Error(`Failed to fetch address for "${library}" from registry`, {
+                cause: err,
+            });
         }
         throw err;
     }
@@ -152,7 +162,9 @@ async function queryVersion(
         metaResult = await registry.getMetadataUriAtVersion.query(library, requestedVersion);
     } catch (err) {
         if (isRegistryQueryError(err)) {
-            throw new Error(`Version ${requestedVersion} of "${library}" not found in registry`);
+            throw new Error(`Version ${requestedVersion} of "${library}" not found in registry`, {
+                cause: err,
+            });
         }
         throw err;
     }
@@ -175,6 +187,7 @@ async function queryVersion(
         if (isRegistryQueryError(err)) {
             throw new Error(
                 `Failed to fetch address for "${library}" version ${requestedVersion} from registry`,
+                { cause: err },
             );
         }
         throw err;
@@ -387,6 +400,59 @@ if (import.meta.vitest) {
             } finally {
                 rmSync(root, { recursive: true, force: true });
             }
+        });
+
+        test("classifies viem zero-data decode errors as registry misses", () => {
+            expect(
+                isRegistryQueryError(
+                    new Error('Cannot decode zero data ("0x") with ABI parameters.'),
+                ),
+            ).toBe(true);
+            expect(isRegistryQueryError(new Error("AbiDecodingZeroDataError"))).toBe(true);
+        });
+
+        test("does not classify unrelated errors mentioning hex values as registry misses", () => {
+            expect(isRegistryQueryError(new Error("connection refused to 0xabc node"))).toBe(false);
+        });
+
+        test("surfaces RPC failures instead of rewriting them to contract-not-found", async () => {
+            const root = mkdtempSync(join(tmpdir(), "cdm-install-"));
+            process.env.CDM_ROOT = root;
+
+            try {
+                const summary = await installContracts({
+                    libraries: [{ library: "@example/counter", requestedVersion: "latest" }],
+                    registry: {
+                        getVersionCount: {
+                            query: async () => {
+                                throw new Error("connection refused to 0xabc node");
+                            },
+                        },
+                    } as unknown as RegistryContract,
+                    ipfs: fakeIpfs(),
+                });
+
+                expect(summary.success).toBe(false);
+                expect(summary.errors[0].error).toBe("connection refused to 0xabc node");
+            } finally {
+                rmSync(root, { recursive: true, force: true });
+            }
+        });
+
+        test("rewrites zero-data query errors to contract-not-found with the cause attached", async () => {
+            const original = new Error('Cannot decode zero data ("0x") with ABI parameters.');
+            const registry = {
+                getVersionCount: {
+                    query: async () => {
+                        throw original;
+                    },
+                },
+            } as unknown as RegistryContract;
+
+            await expect(queryLatest("@example/missing", registry)).rejects.toMatchObject({
+                message: 'Contract "@example/missing" not found in registry',
+                cause: original,
+            });
         });
 
         test("preserves failed registry query reasons", async () => {

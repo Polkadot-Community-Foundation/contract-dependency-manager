@@ -89,9 +89,14 @@ export async function installCdmRelease(
     assertSupportedPlatform();
 
     const repo = opts.repo ?? process.env.CDM_REPO ?? DEFAULT_CDM_REPO;
+    // Tag precedence: explicit option >> CDM_TAG >> latest release. The tag is
+    // resolved once here and returned in the result — callers must not resolve
+    // it separately. A bare `VERSION` env var is deliberately NOT honored: it
+    // is a common ambient variable in CI/containers and would silently pin the
+    // update to an unrelated tag (install.sh's explicit `VERSION=` handling is
+    // a separate, intentionally-invoked path).
     const tag = normalizeReleaseTag(
-        selectReleaseTag(opts.tag, process.env.CDM_TAG, process.env.VERSION) ??
-            (await resolveLatestReleaseTag(repo)),
+        selectReleaseTag(opts.tag, process.env.CDM_TAG) ?? (await resolveLatestReleaseTag(repo)),
     );
     const asset = releaseAssetName();
     const url = `https://github.com/${repo}/releases/download/${tag}/${asset}`;

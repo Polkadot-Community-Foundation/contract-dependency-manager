@@ -15,12 +15,14 @@ import { getAccount } from "@parity/cdm-utils/accounts";
 import { ALICE_SS58, CONTRACTS_REGISTRY_PACKAGE } from "@parity/cdm-utils";
 import { ContractDeployer, CONTRACTS_REGISTRY_CRATE, resolveFeatures } from "@parity/cdm-builder";
 import type { HexString } from "polkadot-api";
+import { ensureAccountMapped } from "../lib/account-mapping";
 import { runDeployWithUI, spinner } from "../lib/ui";
 
 const deploy = new Command("deploy")
     .description("Deploy and register contracts")
     .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain")
     .option("--bulletin-url <url>", "WebSocket URL for Bulletin chain")
+    .option("--ipfs-gateway-url <url>", "IPFS gateway URL for fetching metadata")
     .option("-n, --name <name>", "Chain preset name (paseo, devnet, w3s, local, custom)")
     .option("--registry-address <address>", "Registry contract address")
     .option("--suri <uri>", "Secret URI for signing")
@@ -211,10 +213,16 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
     // Map account (required for Revive pallet on fresh chains)
     console.log("Mapping account...");
     try {
-        await chainClient.assetHub.tx.Revive.map_account().signAndSubmit(signer);
-        console.log("  Account mapped\n");
-    } catch {
-        console.log("  Account already mapped\n");
+        const outcome = await ensureAccountMapped(chainClient.assetHub, signer);
+        console.log(
+            outcome === "already-mapped" ? "  Account already mapped\n" : "  Account mapped\n",
+        );
+    } catch (err) {
+        console.error(
+            `ERROR: Failed to map account: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        chainClient.destroy();
+        process.exit(1);
     }
 
     // Phase 1 preflight: deploy ContractRegistry only if this signer/bytecode
