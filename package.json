@@ -8,7 +8,7 @@
     "build": "pnpm build:ts && pnpm build:registry",
     "build:ts": "turbo build",
     "build:registry": "src/lib/scripts/build-registry.sh",
-    "build:template": "cargo pvm-contract build --manifest-path src/templates/shared-counter/Cargo.toml -p counter && cargo pvm-contract build --manifest-path src/templates/shared-counter/Cargo.toml -p counter_reader && cargo pvm-contract build --manifest-path src/templates/shared-counter/Cargo.toml -p counter_writer",
+    "build:template": "cargo pvm-contract build --manifest-path src/templates/shared-counter/Cargo.toml -p counter && cargo pvm-contract build --manifest-path src/templates/shared-counter/Cargo.toml -p counter_reader && cargo pvm-contract build --manifest-path src/templates/shared-counter/Cargo.toml -p counter_writer && cargo pvm-contract build --manifest-path src/templates/instagram/Cargo.toml -p instagram",
     "check": "pnpm embed:templates && pnpm format:check && pnpm typecheck && pnpm build && pnpm test",
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",

@@ -4,6 +4,12 @@ on:
     push:
         branches: [main]
     pull_request:
+    schedule:
+        # The template contracts and the cdm::import! consumer track floating
+        # `branch = "main"` git pins (pvm-contract-sdk), so upstream can break
+        # them without any activity in this repo. A nightly run catches that
+        # drift the day it happens instead of on the next fresh `bootstrap`.
+        - cron: "17 3 * * *"
 
 jobs:
     ts:
@@ -43,5 +49,66 @@ jobs:
             - name: Run host-side tests
               run: |
                   cargo test -p cdm-macros -p pvm-cdm -p pvm-cdm-macros --target "$(rustc -vV | sed -n 's/^host: //p')"
-            # Follow-up: also run `pnpm test:macro` here once cargo-pvm-contract
-            # and the PolkaVM toolchain are available in CI.
+
+    templates:
+        name: Templates
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: pnpm/action-setup@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+            # Template contracts build with build-std against the PolkaVM JSON
+            # target (see .cargo/config.toml), which needs nightly + rust-src.
+            - uses: dtolnay/rust-toolchain@nightly
+              with:
+                  components: rust-src
+            # cargo-pvm-contract is a floating git pin (branch = "main"), so
+            # resolve the current upstream revision up front and key every
+            # cache on it: any upstream change invalidates the installed
+            # binary and build caches together.
+            - name: Resolve cargo-pvm-contract revision
+              id: pvm-rev
+              run: |
+                  rev="$(git ls-remote https://github.com/paritytech/cargo-pvm-contract.git refs/heads/main | cut -f1)"
+                  echo "rev=${rev}" >> "$GITHUB_OUTPUT"
+            - name: Cache cargo-pvm-contract binary
+              id: cache-pvm-bin
+              uses: actions/cache@v4
+              with:
+                  path: ~/.cargo/bin/cargo-pvm-contract
+                  key: cargo-pvm-contract-${{ runner.os }}-${{ steps.pvm-rev.outputs.rev }}
+            - name: Cache cargo dependencies and template build artifacts
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      ~/.cargo/registry
+                      ~/.cargo/git
+                      src/lib/cdm/import-test/target
+                      src/templates/shared-counter/target
+                      src/templates/instagram/target
+                  key: templates-cargo-${{ runner.os }}-${{ steps.pvm-rev.outputs.rev }}-${{ hashFiles('src/templates/**/Cargo.toml', 'src/lib/cdm/**/Cargo.toml') }}
+                  restore-keys: |
+                      templates-cargo-${{ runner.os }}-${{ steps.pvm-rev.outputs.rev }}-
+                      templates-cargo-${{ runner.os }}-
+            # Same install steps/flags as `cdm setup` (src/apps/cli/src/lib/toolchain.ts):
+            # shallow-fetch the resolved revision, then `cargo install` with an
+            # explicit host target because the root .cargo/config.toml pins the
+            # default build target to PolkaVM.
+            - name: Install cargo-pvm-contract
+              if: steps.cache-pvm-bin.outputs.cache-hit != 'true'
+              run: |
+                  tmp_dir="$(mktemp -d)"
+                  git init -q "$tmp_dir"
+                  git -C "$tmp_dir" remote add origin https://github.com/paritytech/cargo-pvm-contract.git
+                  git -C "$tmp_dir" fetch -q --depth 1 origin "${{ steps.pvm-rev.outputs.rev }}"
+                  git -C "$tmp_dir" checkout -q FETCH_HEAD
+                  host_target="$(rustc -vV | awk '/^host:/ { print $2 }')"
+                  cargo install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
+            - name: Compile cdm::import! consumer to PolkaVM
+              run: pnpm test:macro
+            - name: Build template contracts
+              run: pnpm build:template
