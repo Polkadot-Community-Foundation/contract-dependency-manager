@@ -20,6 +20,7 @@
     },
     "scripts": {
         "build": "tsup src/index.ts src/abi.ts --format esm --dts --clean",
+        "typecheck": "tsc --noEmit",
         "clean": "rm -rf dist"
     },
     "dependencies": {
