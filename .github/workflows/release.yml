@@ -33,11 +33,14 @@ jobs:
             - name: Check for changesets
               id: changesets
               run: |
-                  if ls .changeset/*.md 2>/dev/null | grep -qv README.md; then
-                    echo "found=true" >> $GITHUB_OUTPUT
-                  else
-                    echo "found=false" >> $GITHUB_OUTPUT
-                  fi
+                  found=false
+                  for f in .changeset/*.md; do
+                    if [ -e "$f" ] && [ "${f##*/}" != "README.md" ]; then
+                      found=true
+                      break
+                    fi
+                  done
+                  echo "found=$found" >> "$GITHUB_OUTPUT"
 
             - if: steps.changesets.outputs.found == 'true'
               uses: oven-sh/setup-bun@v2
@@ -146,8 +149,8 @@ jobs:
                   # Use the @parity/cdm-cli version as the release tag
                   VERSION=$(node -p "require('./src/apps/cli/package.json').version")
                   TAG="v${VERSION}"
-                  echo "tag=$TAG" >> $GITHUB_OUTPUT
-                  echo "version=$VERSION" >> $GITHUB_OUTPUT
+                  echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+                  echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
             - name: Create Release
               if: steps.changesets.outputs.found == 'true'
