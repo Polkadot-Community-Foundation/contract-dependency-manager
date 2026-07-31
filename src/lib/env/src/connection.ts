@@ -14,6 +14,8 @@ import { summit_asset_hub } from "@parity/product-sdk-descriptors/summit-asset-h
 import { summit_bulletin } from "@parity/product-sdk-descriptors/summit-bulletin";
 import { getChainPreset, normalizeChainName, type KnownChainName } from "./known_chains";
 
+// TODO! light-client connections (smoldot) are on the roadmap; the smoldot dep is kept intentionally.
+
 export type CdmDirectChainClient<TChains extends Record<string, ChainDefinition>> = {
     [K in keyof TChains]: TypedApi<TChains[K]>;
 } & {

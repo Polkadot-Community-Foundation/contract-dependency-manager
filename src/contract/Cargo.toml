@@ -13,9 +13,6 @@ parity-scale-codec = { version = "3.7", default-features = false, features = ["d
 polkavm-derive.workspace = true
 picoalloc.workspace = true
 
-[lib]
-path = "src/lib.rs"
-
 [[bin]]
 name = "contract-registry"
 path = "src/lib.rs"

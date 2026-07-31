@@ -6,7 +6,7 @@ CLI and web tooling for managing PVM smart contract dependencies on Polkadot. Au
 
 - **Always act as team leader.** The primary agent the user is talking to MUST act as a team leader and delegate work to sub-agents for almost everything.
 - **Always use team mode.** You MUST always run agents in team mode (using `TeamCreate` + `Task` with `team_name`) so the user can properly watch their work. Never use standalone agents outside of a team. This applies to ALL agent usage — no exceptions.
-- **Always format when done.** After finishing code changes, run `make format` to ensure consistent formatting before presenting results to the user.
+- **Always format when done.** After finishing code changes, run `pnpm format` to ensure consistent formatting before presenting results to the user.
 - **Always add a changeset for releasable changes.** Any change that affects a publishable workspace package (everything except `@parity/cdm-frontend` and `@parity/cdm-scripts`, per [.changeset/config.json](.changeset/config.json)) requires a changeset file in `.changeset/`. Create it as part of the change — do not wait to be asked. Use `---` frontmatter listing each affected package with `patch`/`minor`/`major`, followed by a one-line summary. Skip only for changes that touch no publishable packages (docs-only, frontend-only, scripts-only, CI/tooling).
 
 ## Monorepo Structure
@@ -19,7 +19,6 @@ package.json                   # pnpm workspace root
 pnpm-workspace.yaml            # Workspace packages + version catalog
 turbo.json                     # Task pipeline
 tsconfig.json                  # Base TS config (no outDir/rootDir/jsx)
-Makefile                       # Top-level dev commands
 src/
   apps/
     cli/                       # @parity/cdm-cli — Commander.js CLI (bun runtime)
@@ -49,6 +48,7 @@ src/
     scripts/                   # @parity/cdm-scripts — Standalone bun scripts
       embed-templates.ts       #   Generate src/apps/cli/src/generated/templates.ts
       deploy-registry.ts       #   Deploy registry on-chain
+      build-registry.sh        #   Build registry with rev-pinned old-line cargo-pvm-contract
     cdm/
       rust/                    # cdm crate — re-exports cdm::import!() macro
       rust-macros/             # cdm-macros — Proc-macro crate, provides cdm::import!()
@@ -77,38 +77,44 @@ src/
 
 ```bash
 # Setup
-make setup                    # Install ppn-proxy + pnpm install + build templates
+pnpm bootstrap                # pnpm install + build template contracts
 
 # Development
-make dev                      # Run CLI in dev mode (bun)
-make frontend                 # pnpm --filter @parity/cdm-frontend dev
+pnpm dev                      # Frontend dev server (builds workspace deps first)
 bun run src/apps/cli/src/cli.ts  # Run CLI directly
 
 # Building
-make build                    # Build all workspace packages
-make compile                  # bun build --compile CLI to dist/cdm
-make install                  # Build + compile CLI to ~/.cdm/bin/cdm
-make compile-all              # Cross-compile (darwin-arm64, darwin-x64, linux-x64, linux-arm64)
-make build-registry           # cargo pvm-contract build for ContractRegistry
-make build-template           # Build shared-counter template contracts
-make embed-templates          # bun run src/lib/scripts/embed-templates.ts
+pnpm build                    # build:ts + build:registry
+pnpm build:ts                 # turbo build (all TS workspace packages)
+pnpm build:registry           # Build ContractRegistry via src/lib/scripts/build-registry.sh
+pnpm build:template           # Build shared-counter template contracts
+pnpm compile:cli              # build:ts + embed:templates + compile CLI to dist/cdm
+pnpm compile:all              # Cross-compile (darwin-arm64, darwin-x64, linux-x64, linux-arm64)
+pnpm install:cli              # compile:cli + copy to ~/.cdm/bin/cdm
+pnpm embed:templates          # bun run src/lib/scripts/embed-templates.ts
 
 # Deployment
-make deploy-registry CHAIN=local  # bun run src/lib/scripts/deploy-registry.ts
+pnpm deploy:registry -- --name local  # bun run src/lib/scripts/deploy-registry.ts
 
 # Testing
-make test                     # pnpm vitest run
+pnpm test                     # vitest + test:macro + test:rust
+pnpm test:e2e                 # end-to-end tests (requires revive-dev-node)
+pnpm test:macro               # Compile cdm::import! consumer to PolkaVM
+pnpm test:rust                # Host-side Rust unit tests
+
+# Full gate
+pnpm check                    # embed:templates + format:check + typecheck + build + test
 
 # Formatting
-make format                   # Format all TS and Rust code
+pnpm format                   # Format all TS and Rust code
+pnpm format:check             # Check formatting
 
 # Cleanup
-make clean                    # Remove build artifacts
+pnpm clean                    # turbo clean + rm -rf dist/ target/
 
 # Package management
 pnpm install                  # Install all workspace deps
 pnpm --filter @parity/cdm-frontend build  # Build specific package
-make generate-papi            # Run polkadot-api codegen (from src/lib/descriptors/)
 ```
 
 ## Version Management

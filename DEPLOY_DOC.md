@@ -32,7 +32,7 @@ Use a funded W3S/Summit Asset Hub deployer mnemonic. CDM saves this account late
 
 ```bash
 export CDM_DEPLOY_SURI="<deployer-mnemonic>"
-SURI="$CDM_DEPLOY_SURI" CHAIN=w3s make deploy-registry
+pnpm deploy:registry -- --name w3s --suri "$CDM_DEPLOY_SURI"
 ```
 
 Copy the deployed address from:
@@ -72,7 +72,7 @@ After the W3S registry address PR merges, update the CDM checkout and install th
 git checkout main
 git pull --ff-only
 pnpm install
-make install
+pnpm install:cli
 cdm account set -n w3s --mnemonic "$CDM_DEPLOY_SURI"
 ```
 
