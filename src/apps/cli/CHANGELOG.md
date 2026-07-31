@@ -1,5 +1,11 @@
 # @dotdm/cli
 
+## 0.11.1
+
+### Patch Changes
+
+- 375ef73: Update bundled templates for the current pvm-contract-sdk API
+
 ## 0.11.0
 
 ### Minor Changes
