@@ -18,6 +18,7 @@ target/
 
 src/templates/*/**/.cdm/
 !src/templates/*/.papi/descriptors/dist/
+src/lib/cdm/import-test/.cdm/
 
 reference-repos/
 

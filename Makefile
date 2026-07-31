@@ -1,5 +1,6 @@
 CLI_DIR = src/apps/cli
 TEMPLATE_DIR = src/templates/shared-counter
+HOST_TARGET := $(shell rustc -vV | sed -n 's/^host: //p')
 DEPLOY_REGISTRY_ARGS = --name $(or $(CHAIN),local)
 DEPLOY_REGISTRY_ARGS += $(if $(SURI),--suri "$(SURI)")
 DEPLOY_REGISTRY_ARGS += $(if $(REGISTRY_ADDRESS),--registry-address $(REGISTRY_ADDRESS))
@@ -7,7 +8,7 @@ DEPLOY_REGISTRY_ARGS += $(if $(MIGRATE_FROM_REGISTRY),--migrate-from-registry $(
 DEPLOY_REGISTRY_ARGS += $(if $(MIGRATION_JSON),--migration-json "$(MIGRATION_JSON)")
 DEPLOY_REGISTRY_ARGS += $(if $(MIGRATION_BATCH_SIZE),--migration-batch-size $(MIGRATION_BATCH_SIZE))
 
-.PHONY: install dev frontend build compile compile-all build-registry deploy-registry build-template test test-macro clean format format-check format-ts format-rs format-ts-check format-rs-check
+.PHONY: install dev frontend build compile compile-all build-registry deploy-registry build-template test test-macro test-rust clean format format-check format-ts format-rs format-ts-check format-rs-check
 
 setup:
 	pnpm install
@@ -59,8 +60,14 @@ build-template:
 	cargo pvm-contract build --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -p counter_reader
 	cargo pvm-contract build --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -p counter_writer
 
-test: test-macro
+test: test-macro test-rust
 	pnpm vitest run
+
+# Host-side unit tests for the Rust proc-macro/integration crates. The root
+# .cargo/config.toml pins the default target to PolkaVM, so an explicit host
+# target is required to run these on the developer machine or CI.
+test-rust:
+	cargo test -p cdm-macros -p pvm-cdm -p pvm-cdm-macros --target $(HOST_TARGET)
 
 # Compiles the in-tree `cdm::import!` consumer (src/lib/cdm/import-test) to
 # PolkaVM. A failure here means the macro is emitting code that doesn't type-

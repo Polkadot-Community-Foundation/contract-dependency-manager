@@ -24,6 +24,7 @@
     },
     "scripts": {
         "build": "tsup src/index.ts src/browser.ts src/codegen.ts --format esm --dts --clean",
+        "typecheck": "tsc --noEmit",
         "clean": "rm -rf dist"
     },
     "dependencies": {
