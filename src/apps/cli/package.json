@@ -8,7 +8,6 @@
     },
     "scripts": {
         "dev": "bun run src/cli.ts",
-        "build": "echo 'No build needed - bun runs TypeScript directly'",
         "compile": "bun build --compile src/cli.ts --outfile dist/cdm",
         "test": "vitest run",
         "typecheck": "tsc --noEmit",

@@ -4,7 +4,6 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "echo 'No build needed'",
         "typecheck": "tsc --noEmit",
         "clean": "echo 'Nothing to clean'"
     },

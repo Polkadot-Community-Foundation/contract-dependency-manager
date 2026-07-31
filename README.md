@@ -320,27 +320,33 @@ The Instagram template is the current browser app example. It uses product-sdk h
 ```bash
 git clone https://github.com/paritytech/contract-dependency-manager.git
 cd contract-dependency-manager
-make setup
+pnpm bootstrap           # first-time setup: install deps + build template contracts
 
 # Run the CLI in dev mode
 bun run src/apps/cli/src/cli.ts --help
 
-# Run the frontend; rebuilds local workspace deps first
-make frontend
+# Run the frontend dev server; rebuilds local workspace deps first
+pnpm dev
 
 # Run tests
-make test                # unit tests only (fast)
+pnpm test                # unit tests: vitest + macro + host-side Rust
 pnpm test:e2e            # end-to-end: spawns revive-dev-node, deploys
                          # the registry, exercises every method.
                          # Requires `revive-dev-node` and `bun` on $PATH:
                          #   cargo install --git https://github.com/paritytech/polkadot-sdk --bin revive-dev-node
                          #   curl -fsSL https://bun.sh/install | bash
 
-# Build native binary
-make compile
+# Full gate: format check + typecheck + build + tests
+pnpm check
+
+# Build native binary to dist/cdm
+pnpm compile:cli
 
 # Cross-compile for all platforms
-make compile-all
+pnpm compile:all
+
+# Build + install the CLI to ~/.cdm/bin/cdm
+pnpm install:cli
 ```
 
 ## Architecture

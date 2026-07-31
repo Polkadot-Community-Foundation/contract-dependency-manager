@@ -76,7 +76,7 @@ function resolveMigrationJsonPath(): string {
 
 if (!existsSync(pvmPath)) {
     console.error(`Registry not built: ${pvmPath}`);
-    console.error("Run: make build-registry");
+    console.error("Run: pnpm build:registry");
     process.exit(1);
 }
 

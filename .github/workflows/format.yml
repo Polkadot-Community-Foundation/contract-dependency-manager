@@ -29,7 +29,9 @@ jobs:
             - uses: dtolnay/rust-toolchain@stable
               with:
                   components: rustfmt
-            # Same target as local `make format-check`, so CI also covers the
+            # Same targets as local `pnpm format:check`, so CI also covers the
             # template workspace at src/templates/shared-counter.
             - name: Check formatting
-              run: make format-rs-check
+              run: |
+                  cargo fmt --all -- --check
+                  cargo fmt --all --manifest-path src/templates/shared-counter/Cargo.toml -- --check

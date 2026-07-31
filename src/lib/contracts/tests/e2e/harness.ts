@@ -9,9 +9,9 @@
 // Requires:
 //   - `revive-dev-node` on $PATH (install:
 //       cargo install --git https://github.com/paritytech/polkadot-sdk --bin revive-dev-node)
-//   - `@parity/cdm-builder` + `@parity/cdm-env` + `@parity/cdm-utils` dist/ built (pnpm -r build)
+//   - `@parity/cdm-builder` + `@parity/cdm-env` + `@parity/cdm-utils` dist/ built (pnpm build:ts)
 //   - the registry .polkavm binary (built lazily on first `deployRegistry()` call
-//     via `make build-registry`)
+//     via `pnpm build:registry`)
 
 import { spawn, execFile } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -128,13 +128,13 @@ export async function spawnReviveNode(): Promise<NodeHandle> {
 
 async function ensureRegistryBuilt(): Promise<void> {
     if (existsSync(REGISTRY_PVM)) return;
-    await execFileAsync("make", ["build-registry"], {
+    await execFileAsync("pnpm", ["build:registry"], {
         cwd: ROOT_DIR,
         maxBuffer: 16 * 1024 * 1024,
     });
     if (!existsSync(REGISTRY_PVM)) {
         throw new Error(
-            `Registry .polkavm not produced at ${REGISTRY_PVM} after make build-registry`,
+            `Registry .polkavm not produced at ${REGISTRY_PVM} after pnpm build:registry`,
         );
     }
 }
