@@ -1,5 +1,11 @@
 # @dotdm/env
 
+## 2.2.0
+
+### Minor Changes
+
+- 8654118: `getRegistryAddress` now throws an actionable error for unknown chain names instead of returning an empty address, and chain-name validation is derived from the KNOWN_CHAINS presets in one place (`normalizeChainName`), so typo'd chain names fail fast everywhere.
+
 ## 2.1.0
 
 ### Minor Changes

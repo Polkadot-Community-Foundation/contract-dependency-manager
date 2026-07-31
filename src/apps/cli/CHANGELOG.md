@@ -1,5 +1,19 @@
 # @dotdm/cli
 
+## 0.11.0
+
+### Minor Changes
+
+- 45b7942: Account mapping now only reports "already mapped" when Revive actually returns `AccountAlreadyMapped` (other failures surface and fail the command), `cdm update` no longer honors an ambient `VERSION` env var (use `--tag` or `CDM_TAG`) and resolves the release tag once, `cdm install --assethub-url` always wins over `--name` presets (no commander default), and `cdm deploy` gains `--ipfs-gateway-url`.
+
+### Patch Changes
+
+- Updated dependencies [8654118]
+- Updated dependencies [8654118]
+  - @parity/cdm-builder@4.0.0
+  - @parity/cdm-env@2.2.0
+  - @parity/cdm-codegen@0.6.24
+
 ## 0.10.0
 
 ### Minor Changes

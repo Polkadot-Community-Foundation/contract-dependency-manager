@@ -1,5 +1,16 @@
 # @dotdm/contracts
 
+## 4.0.0
+
+### Major Changes
+
+- 8654118: Breaking: `pvmContractBuild`/`pvmContractBuildAsync` and `buildContracts` now require an explicit `registryAddress` — omitting it no longer silently embeds the paseo registry. Also: registry query errors are only classified as "contract not found" for viem zero-data decode errors (with the original error attached as `cause`), the deploy pipeline dry-runs each contract once via `planDeploy` instead of twice (address precompute errors now propagate instead of being swallowed), and `--contracts` filtering matches Rust contracts by CDM package name and display name like Solidity targets.
+
+### Patch Changes
+
+- Updated dependencies [8654118]
+  - @parity/cdm-env@2.2.0
+
 ## 3.2.0
 
 ### Minor Changes
