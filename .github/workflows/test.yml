@@ -1,0 +1,43 @@
+name: Test
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+
+jobs:
+    ts:
+        name: TypeScript
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: "1.2.x"
+            - uses: pnpm/action-setup@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+            # The CLI imports build-time generated template embeds (gitignored),
+            # so they must exist before typechecking or running the CLI tests.
+            - name: Embed CLI templates
+              run: make embed-templates
+            - name: Typecheck
+              run: pnpm typecheck
+            - name: Run tests
+              run: pnpm vitest run
+
+    rust:
+        name: Rust
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: rust-src
+            - name: Run host-side tests
+              run: make test-rust
+            # Follow-up: also run `make test-macro` here once cargo-pvm-contract
+            # and the PolkaVM toolchain are available in CI.
