@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { installCdmRelease, selectReleaseTag } from "../lib/releases";
+import { installCdmRelease } from "../lib/releases";
 import { spinner } from "../lib/ui";
 import { runSetupWithUi } from "./setup";
 
@@ -18,11 +18,15 @@ export const updateCommand = new Command("update")
             skipSetup?: boolean;
             cargoPvmContractRef: string;
         }) => {
-            const tag = selectReleaseTag(opts.tag, process.env.CDM_TAG, process.env.VERSION);
-            const view = spinner("cdm", tag ? `installing ${tag}` : "resolving latest release");
+            // Tag resolution (--tag >> CDM_TAG >> latest) happens once inside
+            // installCdmRelease; the resolved tag comes back in the result.
+            const view = spinner(
+                "cdm",
+                opts.tag ? `installing ${opts.tag}` : "resolving release tag",
+            );
             let result: Awaited<ReturnType<typeof installCdmRelease>>;
             try {
-                result = await installCdmRelease({ tag });
+                result = await installCdmRelease({ tag: opts.tag });
                 view.succeed(`${result.tag} -> ${result.binPath}`);
             } catch (err) {
                 view.fail("failed");
