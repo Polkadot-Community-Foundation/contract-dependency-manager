@@ -12,7 +12,12 @@ import { devnet_asset_hub } from "@parity/product-sdk-descriptors/devnet-asset-h
 import { devnet_bulletin } from "@parity/product-sdk-descriptors/devnet-bulletin";
 import { summit_asset_hub } from "@parity/product-sdk-descriptors/summit-asset-hub";
 import { summit_bulletin } from "@parity/product-sdk-descriptors/summit-bulletin";
-import { getChainPreset, normalizeChainName, type KnownChainName } from "./known_chains";
+import {
+    getChainPreset,
+    KNOWN_CHAINS,
+    normalizeChainName,
+    type KnownChainName,
+} from "./known_chains";
 
 // TODO! light-client connections (smoldot) are on the roadmap; the smoldot dep is kept intentionally.
 
@@ -99,9 +104,8 @@ const ASSET_HUB_DESCRIPTORS = {
 function resolveExplicitChainName(chainName: string): KnownChainName | "custom" {
     const normalized = normalizeChainName(chainName);
     if (!normalized) {
-        throw new Error(
-            `Unknown chain "${chainName}". Valid names: polkadot, paseo, devnet, w3s, local, custom`,
-        );
+        const valid = [...Object.keys(KNOWN_CHAINS), "custom"].join(", ");
+        throw new Error(`Unknown chain "${chainName}". Valid names: ${valid}`);
     }
     return normalized;
 }
