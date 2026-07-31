@@ -28,7 +28,6 @@
     },
     "devDependencies": {
         "@eslint/js": "catalog:",
-        "@types/dompurify": "catalog:",
         "@types/node": "catalog:",
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",
