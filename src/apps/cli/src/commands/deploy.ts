@@ -12,8 +12,15 @@ import {
     type CdmChainClient,
 } from "@parity/cdm-env";
 import { getAccount } from "@parity/cdm-utils/accounts";
-import { ALICE_SS58, CONTRACTS_REGISTRY_PACKAGE } from "@parity/cdm-utils";
-import { ContractDeployer, CONTRACTS_REGISTRY_CRATE, resolveFeatures } from "@parity/cdm-builder";
+import { ALICE_SS58 } from "@parity/cdm-utils";
+import {
+    ContractDeployer,
+    CONTRACTS_REGISTRY_CRATE,
+    CONTRACTS_REGISTRY_PROXY_CRATE,
+    predictRegistryDeploy,
+    deployRegistryWithProxy,
+    resolveFeatures,
+} from "@parity/cdm-builder";
 import type { HexString } from "polkadot-api";
 import { ensureAccountMapped } from "../lib/account-mapping";
 import { runDeployWithUI, spinner } from "../lib/ui";
@@ -177,14 +184,21 @@ async function deployWithRegistry(
 async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<void> {
     console.log("=== CDM Bootstrap Deploy ===\n");
 
-    const registryPvmPath = resolve(rootDir, `target/${CONTRACTS_REGISTRY_CRATE}.release.polkavm`);
-    if (!existsSync(registryPvmPath)) {
-        console.error(`ERROR: ContractRegistry not built: ${registryPvmPath}`);
-        console.error("Build contracts first:");
-        console.error(
-            `  cargo pvm-contract build --manifest-path Cargo.toml -p ${CONTRACTS_REGISTRY_CRATE}`,
-        );
-        process.exit(1);
+    const implPvmPath = resolve(rootDir, `target/release/${CONTRACTS_REGISTRY_CRATE}.polkavm`);
+    const proxyPvmPath = resolve(
+        rootDir,
+        `target/release/${CONTRACTS_REGISTRY_PROXY_CRATE}.polkavm`,
+    );
+    for (const [crate, path] of [
+        [CONTRACTS_REGISTRY_CRATE, implPvmPath],
+        [CONTRACTS_REGISTRY_PROXY_CRATE, proxyPvmPath],
+    ]) {
+        if (!existsSync(path)) {
+            console.error(`ERROR: ContractRegistry not built: ${path}`);
+            console.error("Build contracts first:");
+            console.error(`  cargo pvm-contract build --manifest-path Cargo.toml -p ${crate}`);
+            process.exit(1);
+        }
     }
 
     const { signer, origin } = resolveSigner(opts);
@@ -226,15 +240,12 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
     }
 
     // Phase 1 preflight: deploy ContractRegistry only if this signer/bytecode
-    // produces the registry address selected for this network/target.
+    // produces the registry (proxy) address selected for this network/target.
     const registryAddress = resolveRegistryAddress(opts);
-    const expectedRegistry = await deployer.dryRunDeploy(
-        registryPvmPath,
-        CONTRACTS_REGISTRY_PACKAGE,
-    );
-    if (expectedRegistry.address.toLowerCase() !== registryAddress.toLowerCase()) {
+    const expectedRegistry = await predictRegistryDeploy(deployer, implPvmPath, proxyPvmPath);
+    if (expectedRegistry.proxy.address.toLowerCase() !== registryAddress.toLowerCase()) {
         console.error(
-            `ERROR: ContractRegistry bootstrap would deploy ${expectedRegistry.address}, but the selected target uses ${registryAddress}.`,
+            `ERROR: ContractRegistry bootstrap would deploy ${expectedRegistry.proxy.address}, but the selected target uses ${registryAddress}.`,
         );
         console.error(
             "Use the matching deployer/bytecode for this target, or pass --registry-address for a separate registry target.",
@@ -243,13 +254,18 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
         process.exit(1);
     }
 
-    // Phase 1: Deploy ContractRegistry (CREATE2 for deterministic address)
-    console.log("Deploying ContractRegistry...");
-    const { address: registryAddr } = await deployer.deploy(
-        registryPvmPath,
-        CONTRACTS_REGISTRY_PACKAGE,
+    // Phase 1: Deploy ContractRegistry — implementation blob, then the
+    // EIP-1967 proxy pointing at it (CREATE2 for deterministic addresses).
+    // The proxy address is the registry address everything else uses.
+    console.log("Deploying ContractRegistry (implementation + proxy)...");
+    const { implAddress, proxyAddress: registryAddr } = await deployRegistryWithProxy(
+        deployer,
+        implPvmPath,
+        proxyPvmPath,
+        expectedRegistry,
     );
-    console.log(`  ContractRegistry: ${registryAddr}\n`);
+    console.log(`  ContractRegistry implementation: ${implAddress}`);
+    console.log(`  ContractRegistry (proxy): ${registryAddr}\n`);
     opts.registryAddress = registryAddr;
 
     // Phase 2+3: Build and deploy all CDM contracts (reuses the existing chain client)

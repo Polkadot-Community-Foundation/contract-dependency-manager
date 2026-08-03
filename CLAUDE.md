@@ -48,12 +48,14 @@ src/
     scripts/                   # @parity/cdm-scripts — Standalone bun scripts
       embed-templates.ts       #   Generate src/apps/cli/src/generated/templates.ts
       deploy-registry.ts       #   Deploy registry on-chain
-      build-registry.sh        #   Build registry with rev-pinned old-line cargo-pvm-contract
+      build-registry.sh        #   Build registry impl + proxy with mainline cargo-pvm-contract
     cdm/
       rust/                    # cdm crate — re-exports cdm::import!() macro
       rust-macros/             # cdm-macros — Proc-macro crate, provides cdm::import!()
       typescript/              # @parity/cdm-codegen package (stub)
-  contract/                    # contract-registry Rust crate (PolkaVM)
+  contract/                    # contract-registry Rust crate (PolkaVM implementation contract)
+    core/                      # contract-registry-core — pure shared logic (slots, name validation)
+    proxy/                     # contract-registry-proxy — EIP-1967 proxy holding the stable address
   templates/                   # Scaffolding templates (shared-counter, guide)
   stubs/                       # Stub packages (react-devtools-core)
 ```
@@ -69,7 +71,9 @@ src/
 | `@parity/cdm-env` | `src/lib/env` | Chain connections, signer, chain presets |
 | `@parity/cdm-scripts` | `src/lib/scripts` | Standalone bun scripts (embed-templates, deploy-registry) |
 | `@parity/cdm-codegen` | `src/lib/cdm/typescript` | Stub TS library |
-| `contract-registry` | `src/contract` | On-chain ContractRegistry (Rust/PolkaVM) |
+| `contract-registry` | `src/contract` | On-chain ContractRegistry implementation (Rust/PolkaVM) |
+| `contract-registry-core` | `src/contract/core` | Pure shared registry logic — EIP-1967 slots, name validation |
+| `contract-registry-proxy` | `src/contract/proxy` | EIP-1967 proxy — the registry's stable on-chain address |
 | `cdm` | `src/lib/cdm/rust` | CDM crate — re-exports cdm::import!() macro |
 | `cdm-macros` | `src/lib/cdm/rust-macros` | Proc-macro crate — cdm::import!() resolves ABI from cdm.json |
 
@@ -86,7 +90,7 @@ bun run src/apps/cli/src/cli.ts  # Run CLI directly
 # Building
 pnpm build                    # build:ts + build:registry
 pnpm build:ts                 # turbo build (all TS workspace packages)
-pnpm build:registry           # Build ContractRegistry via src/lib/scripts/build-registry.sh
+pnpm build:registry           # Build ContractRegistry impl + proxy via src/lib/scripts/build-registry.sh (mainline cargo-pvm-contract)
 pnpm build:template           # Build shared-counter template contracts
 pnpm compile:cli              # build:ts + embed:templates + compile CLI to dist/cdm
 pnpm compile:all              # Cross-compile (darwin-arm64, darwin-x64, linux-x64, linux-arm64)
@@ -155,7 +159,13 @@ React 19 + Vite + React Router DOM (HashRouter). Uses product-sdk descriptors an
 
 Target: PolkaVM (`riscv64emac-unknown-none-polkavm`) via `.cargo/config.toml`. Requires `cargo-pvm-contract` for building. Cannot `cargo check --workspace` without the PolkaVM target toolchain — use `cargo pvm-contract build` instead.
 
-The ContractRegistry (`src/contract/src/lib.rs`) stores contract name→version→address mappings and metadata URIs on-chain.
+The ContractRegistry stores contract name→version→address mappings and metadata URIs on-chain. It ships as two contracts on the mainline pvm-contract-sdk:
+
+- `src/contract/src/main.rs` — the implementation: publishing, queries, admin import, plus longevity controls: `setCode(address)` (UUPS-style upgrade — repoints the proxy, keeping address and state), `freeze()`/`unfreeze()` (blocks all non-admin mutations with `ContractFrozen()`).
+- `src/contract/proxy/src/main.rs` — a method-less EIP-1967 proxy that owns the stable registry address and delegate-calls everything to the implementation. Deploys are two-step (implementation, then proxy with the implementation address as constructor arg); the proxy address is the registry address consumers use.
+- `src/contract/core/` — `contract-registry-core`, host-independent shared logic (EIP-1967 slot constants, contract-name validation) unit-tested with plain `cargo test`.
+
+Admin/upgrade state (admin, implementation, frozen) lives at fixed EIP-1967-style slots so future implementations can reshape ordinary storage freely. Contract unit tests run on the host via `MockHost` (`cargo pvm-contract test --manifest-path src/contract/Cargo.toml`, same for `proxy/`) and are included in `pnpm test:rust`. The dispatch-level tests in `src/contract/src/tests.rs` lock the `getAddress(string)` selector + 64-byte return layout that `pvm-cdm-macros` hardcodes — do not change that method's ABI without updating both.
 
 ## Testing
 

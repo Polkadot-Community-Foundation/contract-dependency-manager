@@ -206,14 +206,24 @@ export class ContractDeployer {
      * Deploy a PVM contract and return its address.
      * Uses a dry-run to estimate gas, then submits with the estimated values.
      * When cdmPackage is provided, uses CREATE2 (deterministic address via salt).
+     * `constructorData` (ABI-encoded constructor arguments, no selector) is
+     * appended to the instantiate payload for contracts whose constructor
+     * takes arguments.
      */
     async deploy(
         pvmPath: string,
         cdmPackage?: string,
         saltVersion?: DeploySaltVersion,
         saltScope?: string,
+        constructorData?: Uint8Array,
     ): Promise<{ address: string; txHash: string; blockHash: string }> {
-        const { tx } = await this.dryRunDeploy(pvmPath, cdmPackage, saltVersion, saltScope);
+        const { tx } = await this.dryRunDeploy(
+            pvmPath,
+            cdmPackage,
+            saltVersion,
+            saltScope,
+            constructorData,
+        );
 
         const result = await submitAndWatch(tx as unknown as SubmittableTransaction, this.signer, {
             waitFor: "best-block",
@@ -252,9 +262,10 @@ export class ContractDeployer {
         cdmPackage?: string,
         saltVersion?: DeploySaltVersion,
         saltScope?: string,
+        constructorData?: Uint8Array,
     ) {
         const code = new Uint8Array(readFileSync(pvmPath));
-        const data = new Uint8Array(0);
+        const data = constructorData ?? new Uint8Array(0);
         const salt = cdmPackage ? computeDeploySalt(cdmPackage, saltVersion, saltScope) : undefined;
         const dryRun = await this.api.apis.ReviveApi.instantiate(
             this.origin,

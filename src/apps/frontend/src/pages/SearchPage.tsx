@@ -44,7 +44,7 @@ export default function SearchPage() {
                     </div>
                     <div className="search-empty">
                         <h2>Search for contracts</h2>
-                        <p>Enter a package name prefix to find contracts on cdm.</p>
+                        <p>Enter a package name to find contracts on cdm.</p>
                     </div>
                 </div>
             </Layout>
@@ -88,7 +88,7 @@ export default function SearchPage() {
                 ) : packages.length === 0 ? (
                     <div className="search-empty">
                         <h2>No contracts found</h2>
-                        <p>Try a different package name prefix.</p>
+                        <p>Try a different package name.</p>
                     </div>
                 ) : (
                     <InfiniteScroll hasMore={hasMore} loading={loading} loadMore={loadMore}>

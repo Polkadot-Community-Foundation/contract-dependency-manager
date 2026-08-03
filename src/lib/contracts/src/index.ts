@@ -72,16 +72,24 @@ export {
     INSTANTIATE_WITH_CODE_STATIC_WEIGHT,
 } from "./deployer";
 
+export {
+    type RegistryDeployPrediction,
+    encodeConstructorAddress,
+    predictRegistryDeploy,
+    deployRegistryWithProxy,
+} from "./registry-deploy";
+
 export { MetadataPublisher } from "./publisher";
 
 export { computeCid } from "./cid";
 
-export { CONTRACTS_REGISTRY_ABI } from "./abi/registry";
+export { CONTRACTS_REGISTRY_ABI, CONTRACTS_REGISTRY_PROXY_ABI } from "./abi/registry";
 
 export {
     GAS_LIMIT,
     STORAGE_DEPOSIT_LIMIT,
     CONTRACTS_REGISTRY_CRATE,
+    CONTRACTS_REGISTRY_PROXY_CRATE,
 } from "@parity/cdm-utils";
 
 export {

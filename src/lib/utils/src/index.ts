@@ -3,7 +3,9 @@ export {
     GAS_LIMIT,
     STORAGE_DEPOSIT_LIMIT,
     CONTRACTS_REGISTRY_CRATE,
+    CONTRACTS_REGISTRY_PROXY_CRATE,
     CONTRACTS_REGISTRY_PACKAGE,
+    CONTRACTS_REGISTRY_IMPL_PACKAGE,
     DEFAULT_NODE_URL,
 } from "./constants";
 export { stringifyBigInt } from "./utils";

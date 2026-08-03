@@ -15,31 +15,34 @@ pnpm install
 
 ## 2. Install Registry Build Tooling
 
-The registry contract is still built with the legacy `charles/cdm-integration` branch of `cargo-pvm-contract`.
+The registry (implementation + EIP-1967 proxy) is built with the mainline `cargo-pvm-contract`:
 
 ```bash
-HOST_TARGET="$(rustc -vV | awk '/^host:/ {print $2}')"
 cargo install --force --locked \
-  --target "$HOST_TARGET" \
   --git https://github.com/paritytech/cargo-pvm-contract.git \
-  --branch charles/cdm-integration \
   cargo-pvm-contract
 ```
+
+`pnpm build:registry` then builds both blobs to `target/release/contract-registry.polkavm` and `target/release/contract-registry-proxy.polkavm` (each with a matching `.abi.json`).
 
 ## 3. Deploy Registry
 
 Use a funded W3S/Summit Asset Hub deployer mnemonic. CDM saves this account later so registry queries use a mapped origin.
+
+The deploy is two-step and idempotent: the implementation blob lands first (CREATE2), then the proxy pointing at it (CREATE2). The **proxy address is the registry address** — it never changes. The proxy's deployer becomes the registry admin; later implementation upgrades are done by the admin calling `setCode(<new implementation address>)` through the proxy — the proxy is never redeployed.
 
 ```bash
 export CDM_DEPLOY_SURI="<deployer-mnemonic>"
 pnpm deploy:registry -- --name w3s --suri "$CDM_DEPLOY_SURI"
 ```
 
-Copy the deployed address from:
+Copy the deployed proxy address from:
 
 ```text
 CONTRACTS_REGISTRY_ADDR=0x...
 ```
+
+(The script also prints `CONTRACTS_REGISTRY_IMPL_ADDR=0x...` — the implementation blob the proxy currently delegates to; you normally don't need it.)
 
 ## 4. Open Address PR
 
@@ -86,15 +89,10 @@ git clone https://github.com/paritytech/contract-developer-tools.git
 cd contract-developer-tools
 ```
 
-Install the legacy `cargo-pvm-contract` branch required by these contracts:
+Make sure the CDM toolchain (Rust nightly, `rust-src`, mainline `cargo-pvm-contract`) is installed:
 
 ```bash
-HOST_TARGET="$(rustc -vV | awk '/^host:/ {print $2}')"
-cargo install --force --locked \
-  --target "$HOST_TARGET" \
-  --git https://github.com/paritytech/cargo-pvm-contract.git \
-  --branch charles/cdm-integration \
-  cargo-pvm-contract
+cdm setup
 ```
 
 ```bash

@@ -1,6 +1,6 @@
 [package]
-name = "contract-registry"
-description = "On-chain CDM contract registry (implementation contract, served through contract-registry-proxy)"
+name = "contract-registry-proxy"
+description = "EIP-1967 proxy holding the registry's stable address; delegates every call to the current contract-registry implementation"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -11,12 +11,10 @@ repository.workspace = true
 abi-gen = ["pvm-contract-sdk/abi-gen"]
 
 [dependencies]
-contract-registry-core = { path = "core" }
+contract-registry-core = { path = "../core" }
 pvm-contract-sdk.workspace = true
 polkavm-derive.workspace = true
 picoalloc.workspace = true
 
-# `std` (and thus `MockHost`) is enabled only for host-side unit tests, never
-# for the release contract build, so the deployed binary stays no_std.
 [dev-dependencies]
 pvm-contract-sdk = { workspace = true, features = ["std"] }

@@ -1,8 +1,11 @@
 // End-to-end registry validation against a live `revive-dev-node`.
 //
-// The suite spawns a fresh node + deploys the registry once (`beforeAll`),
-// then drives every public method via the same code path CDM's TS pipeline
-// uses (`createContractFromClient` + the embedded `CONTRACTS_REGISTRY_ABI`).
+// The suite spawns a fresh node + deploys the registry once (`beforeAll`) —
+// the harness shells out to `deploy-registry.ts`, which performs the two-step
+// deploy (implementation blob, then the EIP-1967 proxy pointing at it) and
+// hands back the proxy address. All calls below go through the proxy with
+// the implementation's ABI, via the same code path CDM's TS pipeline uses
+// (`createContractFromClient` + the embedded `CONTRACTS_REGISTRY_ABI`).
 // Each assertion is its own `test()` for granular failure attribution.
 //
 // Gated to the `e2e/` directory by `vitest.e2e.config.ts` so `pnpm test`
@@ -27,6 +30,8 @@ const URI = "ipfs://bafy2bzaceblahblahQmExampleLongCidExercisingSpilledChunks";
 
 let node: NodeHandle;
 let chainClient: CdmChainClient;
+// The implementation blob's address — the proxy delegates every call to it.
+let implAddress: string;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let registry: any;
 
@@ -34,10 +39,11 @@ function lc(v: unknown): string {
     return String(v).toLowerCase();
 }
 
-// The reverted registry returns option-shaped tuples `{ isSome, value }`
-// for nullable lookups (getAddress, getMetadataUri, and the *AtVersion
-// variants). Mirror the unwrap helper used by the CLI install pipeline and
-// the frontend so tests assert against the inner value directly.
+// Nullable lookups (getAddress, getMetadataUri, and the *AtVersion variants)
+// return `(bool isSome, value)` output pairs that product-sdk decodes into an
+// `{ isSome, value }` object keyed by the ABI's output names. Mirror the
+// unwrap helper used by the CLI install pipeline and the frontend so tests
+// assert against the inner value directly.
 function unwrapOption<T>(val: unknown): { isSome: boolean; value: T | undefined } {
     if (val && typeof val === "object" && "isSome" in val) {
         const opt = val as { isSome: boolean; value: T };
@@ -46,31 +52,10 @@ function unwrapOption<T>(val: unknown): { isSome: boolean; value: T | undefined 
     return { isSome: false, value: undefined };
 }
 
-function parseSearchPage(value: unknown): { names: string[]; nextOffset: number; done: boolean } {
-    if (Array.isArray(value)) {
-        return {
-            names: Array.isArray(value[0]) ? (value[0] as string[]) : [],
-            nextOffset: Number(value[1] ?? 0),
-            done: Boolean(value[2]),
-        };
-    }
-
-    const page = (value ?? {}) as {
-        names?: unknown;
-        next_offset?: unknown;
-        nextOffset?: unknown;
-        done?: unknown;
-    };
-    return {
-        names: Array.isArray(page.names) ? (page.names as string[]) : [],
-        nextOffset: Number(page.next_offset ?? page.nextOffset ?? 0),
-        done: Boolean(page.done),
-    };
-}
-
 beforeAll(async () => {
     node = await spawnReviveNode();
-    const registryAddress = await deployRegistry(node.wsUrl);
+    const deployed = await deployRegistry(node.wsUrl);
+    implAddress = deployed.implAddress;
 
     const signer = prepareSigner("Alice");
     chainClient = await createCdmAssetHubClient(node.wsUrl, "local");
@@ -78,7 +63,7 @@ beforeAll(async () => {
     registry = await createContractFromClient(
         chainClient.raw.assetHub,
         chainClient.descriptors.assetHub,
-        registryAddress,
+        deployed.address,
         CONTRACTS_REGISTRY_ABI,
         { defaultSigner: signer, defaultOrigin: ALICE_SS58 },
     );
@@ -111,6 +96,18 @@ describe("registry pre-publish (empty state)", () => {
     test("getContractCount is 0", async () => {
         const r = await registry.getContractCount.query();
         expect(r.value).toBe(0);
+    });
+
+    test("isFrozen is false initially", async () => {
+        const r = await registry.isFrozen.query();
+        expect(r.success).toBe(true);
+        expect(r.value).toBe(false);
+    });
+
+    test("getCode returns the implementation address", async () => {
+        const r = await registry.getCode.query();
+        expect(r.success).toBe(true);
+        expect(lc(r.value)).toBe(lc(implAddress));
     });
 });
 
@@ -204,33 +201,60 @@ describe("registry publishLatest + post-publish queries", () => {
     });
 });
 
-describe("registry searchContractNames", () => {
-    test("matching prefix returns the registered name", async () => {
-        const r = await registry.searchContractNames.query("@test/", 0, 10);
-        expect(r.success).toBe(true);
-        const page = parseSearchPage(r.value);
-        expect(page.names).toContain(NAME);
+describe("registry freeze / unfreeze", () => {
+    // The harness has a single funded signer (Alice), who is both the proxy
+    // deployer (admin) and the publisher — so instead of asserting that a
+    // non-admin publish reverts while frozen, assert the admin escape hatch:
+    // freeze, publish as admin (still allowed), then unfreeze.
+    test("freeze tx finalizes and isFrozen flips to true", async () => {
+        const r = await registry.freeze.tx();
+        expect(r.ok).toBe(true);
+
+        const frozen = await registry.isFrozen.query();
+        expect(frozen.value).toBe(true);
     });
 
-    test("non-matching prefix returns an empty done page", async () => {
-        const r = await registry.searchContractNames.query("@nonexistent/", 0, 10);
-        expect(r.success).toBe(true);
-        const page = parseSearchPage(r.value);
-        expect(page.names).toEqual([]);
-        expect(page.done).toBe(true);
+    test("the admin can still publish while frozen", async () => {
+        const FROZEN_NAME = "@test/frozen";
+        const r = await registry.publishLatest.tx(FROZEN_NAME, ADDR, URI);
+        expect(r.ok).toBe(true);
+
+        const count = await registry.getVersionCount.query(FROZEN_NAME);
+        expect(count.value).toBe(1);
     });
 
-    test("pagination advances by returned result count", async () => {
-        const first = await registry.searchContractNames.query("@test/", 0, 1);
-        expect(first.success).toBe(true);
-        const firstPage = parseSearchPage(first.value);
-        expect(firstPage.names).toEqual([NAME]);
-        expect(firstPage.nextOffset).toBe(1);
+    test("unfreeze tx finalizes and isFrozen flips back to false", async () => {
+        const r = await registry.unfreeze.tx();
+        expect(r.ok).toBe(true);
 
-        const second = await registry.searchContractNames.query("@test/", firstPage.nextOffset, 1);
-        expect(second.success).toBe(true);
-        const secondPage = parseSearchPage(second.value);
-        expect(secondPage.names).toEqual([]);
-        expect(secondPage.done).toBe(true);
+        const frozen = await registry.isFrozen.query();
+        expect(frozen.value).toBe(false);
+    });
+});
+
+describe("registry upgrade + admin surface", () => {
+    test("setCode to the current implementation succeeds and emits an event", async () => {
+        const r = await registry.setCode.tx(implAddress);
+        expect(r.ok).toBe(true);
+        // The Upgraded event surfaces as a Revive.ContractEmitted record in
+        // the raw event list; a shape-agnostic containment check keeps this
+        // resilient to papi event envelope changes.
+        expect(JSON.stringify(r.value.events)).toContain("ContractEmitted");
+
+        const code = await registry.getCode.query();
+        expect(lc(code.value)).toBe(lc(implAddress));
+    });
+
+    test("getAdmin/setAdmin round-trip (self-assignment)", async () => {
+        const before = await registry.getAdmin.query();
+        expect(before.success).toBe(true);
+        const admin = String(before.value);
+        expect(lc(admin)).not.toBe("0x0000000000000000000000000000000000000000");
+
+        const r = await registry.setAdmin.tx(admin);
+        expect(r.ok).toBe(true);
+
+        const after = await registry.getAdmin.query();
+        expect(lc(after.value)).toBe(lc(admin));
     });
 });

@@ -10,8 +10,8 @@
 //   - `revive-dev-node` on $PATH (install:
 //       cargo install --git https://github.com/paritytech/polkadot-sdk --bin revive-dev-node)
 //   - `@parity/cdm-builder` + `@parity/cdm-env` + `@parity/cdm-utils` dist/ built (pnpm build:ts)
-//   - the registry .polkavm binary (built lazily on first `deployRegistry()` call
-//     via `pnpm build:registry`)
+//   - the registry implementation + proxy .polkavm binaries (built lazily on
+//     first `deployRegistry()` call via `pnpm build:registry`)
 
 import { spawn, execFile } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -32,10 +32,9 @@ const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // src/lib/contracts/tests/e2e -> repo root is 5 levels up
 const ROOT_DIR = resolve(__dirname, "../../../../..");
-// Old-SDK cargo-pvm-contract writes the registry binary directly under
-// `target/`, not under `target/release/`. Keep this aligned with the path
-// `deploy-registry.ts` reads from.
-const REGISTRY_PVM = resolve(ROOT_DIR, "target/contract-registry.release.polkavm");
+// Keep these aligned with the paths `deploy-registry.ts` reads from.
+const REGISTRY_PVM = resolve(ROOT_DIR, "target/release/contract-registry.polkavm");
+const REGISTRY_PROXY_PVM = resolve(ROOT_DIR, "target/release/contract-registry-proxy.polkavm");
 
 // Per-process port counter. Different vitest workers would collide; we don't
 // fan out e2e suites across workers today (vitest.e2e.config.ts pins
@@ -127,26 +126,35 @@ export async function spawnReviveNode(): Promise<NodeHandle> {
 }
 
 async function ensureRegistryBuilt(): Promise<void> {
-    if (existsSync(REGISTRY_PVM)) return;
+    if (existsSync(REGISTRY_PVM) && existsSync(REGISTRY_PROXY_PVM)) return;
     await execFileAsync("pnpm", ["build:registry"], {
         cwd: ROOT_DIR,
         maxBuffer: 16 * 1024 * 1024,
     });
-    if (!existsSync(REGISTRY_PVM)) {
-        throw new Error(
-            `Registry .polkavm not produced at ${REGISTRY_PVM} after pnpm build:registry`,
-        );
+    for (const pvm of [REGISTRY_PVM, REGISTRY_PROXY_PVM]) {
+        if (!existsSync(pvm)) {
+            throw new Error(`Registry .polkavm not produced at ${pvm} after pnpm build:registry`);
+        }
     }
 }
 
+export interface DeployedRegistry {
+    /** The stable registry address — the EIP-1967 proxy. */
+    address: HexString;
+    /** The implementation blob the proxy delegates to. */
+    implAddress: HexString;
+}
+
 /**
- * Build the registry (if needed) and deploy it via CREATE2 against `wsUrl`.
- * Returns the deployed contract address.
+ * Build the registry blobs (if needed) and deploy them via CREATE2 against
+ * `wsUrl` — implementation first, then the proxy pointing at it. Returns the
+ * proxy address (the registry address consumers use) plus the implementation
+ * address.
  *
  * Spawns `bun run src/lib/scripts/deploy-registry.ts`. See the import-site
  * note above for why we don't invoke `ContractDeployer` directly under Node.
  */
-export async function deployRegistry(wsUrl: string): Promise<HexString> {
+export async function deployRegistry(wsUrl: string): Promise<DeployedRegistry> {
     await ensureRegistryBuilt();
     const { stdout } = await execFileAsync(
         "bun",
@@ -159,5 +167,11 @@ export async function deployRegistry(wsUrl: string): Promise<HexString> {
             `Could not parse registry address from deploy-registry.ts output:\n${stdout}`,
         );
     }
-    return match[1] as HexString;
+    const implMatch = stdout.match(/^CONTRACTS_REGISTRY_IMPL_ADDR=(0x[a-fA-F0-9]+)/m);
+    if (!implMatch) {
+        throw new Error(
+            `Could not parse registry implementation address from deploy-registry.ts output:\n${stdout}`,
+        );
+    }
+    return { address: match[1] as HexString, implAddress: implMatch[1] as HexString };
 }
