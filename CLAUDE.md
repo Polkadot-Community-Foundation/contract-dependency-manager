@@ -165,7 +165,7 @@ The ContractRegistry stores contract name→version→address mappings and metad
 - `src/contract/proxy/src/main.rs` — a method-less EIP-1967 proxy that owns the stable registry address and delegate-calls everything to the implementation. Deploys are two-step (implementation, then proxy with the implementation address as constructor arg); the proxy address is the registry address consumers use.
 - `src/contract/core/` — `contract-registry-core`, host-independent shared logic (EIP-1967 slot constants, contract-name validation) unit-tested with plain `cargo test`.
 
-Admin/upgrade state (admin, implementation, frozen) lives at fixed EIP-1967-style slots so future implementations can reshape ordinary storage freely. Contract unit tests run on the host via `MockHost` (`cargo pvm-contract test --manifest-path src/contract/Cargo.toml`, same for `proxy/`) and are included in `pnpm test:rust`. The dispatch-level tests in `src/contract/src/tests.rs` lock the `getAddress(string)` selector + 64-byte return layout that `pvm-cdm-macros` hardcodes — do not change that method's ABI without updating both.
+Admin/upgrade state (admin, implementation, frozen) lives at fixed EIP-1967-style slots so future implementations can reshape ordinary storage freely. Contract unit tests run on the host via `MockHost` (`cargo pvm-contract test --manifest-path src/contract/Cargo.toml`, same for `proxy/`) and are included in `pnpm test:rust`. The dispatch-level tests inline in `src/contract/src/main.rs` lock the `getAddress(string)` selector + 64-byte return layout that `pvm-cdm-macros` hardcodes — do not change that method's ABI without updating both.
 
 ## Testing
 
