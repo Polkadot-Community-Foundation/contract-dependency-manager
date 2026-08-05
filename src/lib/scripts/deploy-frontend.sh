@@ -41,9 +41,15 @@ pnpm turbo build --filter=@parity/cdm-frontend
 
 export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=8192"
 
+# --mnemonic, NOT --suri: bulletin-deploy's --suri path resolves the key
+# through its "deploy actors" flow, which flags the signer as phone-backed
+# and gates the DotNS "Link content" step behind an interactive
+# "check your phone → press Y" prompt — in CI stdin is closed, so the deploy
+# dies with "aborted by user" AFTER the storage upload succeeds. The
+# --mnemonic path signs directly and is fully non-interactive.
 bulletin-deploy \
     --env "$ENV_ID" \
-    --suri "$SURI" \
+    --mnemonic "$SURI" \
     "$FRONTEND_DIST" \
     "$DOMAIN" \
     "$@"
