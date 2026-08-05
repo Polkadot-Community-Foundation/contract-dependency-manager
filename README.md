@@ -34,7 +34,7 @@ To test a PR dev release, use the `CDM_TAG=...` install command posted by CI, or
 To install CDM while selecting a specific `cargo-pvm-contract` branch:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-manager/main/install.sh | CDM_CARGO_PVM_CONTRACT_REF=charles/cdm-integration bash
+curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-manager/main/install.sh | CDM_CARGO_PVM_CONTRACT_REF=<branch-or-tag> bash
 ```
 
 ## Quick Start
@@ -252,7 +252,7 @@ Install or repair the local CDM toolchain dependencies: Rust nightly, `rust-src`
 ```bash
 cdm setup
 cdm setup --check
-cdm setup --cargo-pvm-contract-ref charles/cdm-integration
+cdm setup --cargo-pvm-contract-ref <branch-or-tag>
 ```
 
 ### `cdm build`
@@ -296,7 +296,7 @@ Update the installed CDM binary from GitHub releases, then refresh toolchain dep
 ```bash
 cdm update
 cdm update --tag cdm-cli-dev-pr-58
-cdm update --cargo-pvm-contract-ref charles/cdm-integration
+cdm update --cargo-pvm-contract-ref <branch-or-tag>
 ```
 
 ### `cdm template [name]`

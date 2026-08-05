@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { stringifyBigInt } from "@parity/cdm-utils";
-import type { AbiEntry } from "./deployer";
+import { decodedErrorSignature, type AbiEntry } from "./deployer";
 import { saveContract } from "./store";
 
 export type InstallRequestedVersion = number | "latest";
@@ -59,8 +59,26 @@ export interface InstallContractsOptions {
     libraries: InstallLibraryRequest[];
     registry: RegistryContract;
     ipfs: InstallIpfsGateway;
+    /** Registry address, used only to make decode-failure messages actionable. */
+    registryAddress?: string;
     artifactsDir?: string;
     onEvent?: (event: InstallEvent) => void;
+}
+
+/** Name + message of an error and its whole `cause` chain, for classification. */
+function errorText(err: unknown): string {
+    const parts: string[] = [];
+    let current: unknown = err;
+    while (current) {
+        if (current instanceof Error) {
+            parts.push(current.name, current.message);
+            current = current.cause;
+        } else {
+            parts.push(String(current));
+            break;
+        }
+    }
+    return parts.join(" ");
 }
 
 /**
@@ -70,8 +88,49 @@ export interface InstallContractsOptions {
  * (hex hashes/addresses in the message) as "contract not found".
  */
 function isRegistryQueryError(err: unknown): boolean {
-    const msg = err instanceof Error ? err.message : String(err);
-    return msg.includes("zero data") || msg.includes("AbiDecoding");
+    const msg = errorText(err);
+    return msg.includes("zero data") || msg.includes("AbiDecodingZeroData");
+}
+
+/**
+ * Detects viem decode-shape failures — non-empty return data that does not fit
+ * the expected ABI layout (`InvalidBytesBooleanError`, `PositionOutOfBounds`,
+ * other `AbiDecoding*` errors). This is what talking to a registry of a
+ * different ABI generation looks like, so it deserves a clearer message than
+ * the raw viem error.
+ */
+function isRegistryDecodeShapeError(err: unknown): boolean {
+    const msg = errorText(err);
+    return (
+        msg.includes("AbiDecoding") ||
+        msg.includes("InvalidBytesBoolean") ||
+        msg.includes("not a valid boolean") ||
+        msg.includes("PositionOutOfBounds") ||
+        msg.includes("out of bounds")
+    );
+}
+
+/**
+ * Rethrows a registry query error with a friendlier message: zero-data decode
+ * errors become `notFoundMessage`, decode-shape errors become a
+ * generation-mismatch hint, and everything else passes through unchanged.
+ */
+function rethrowRegistryQueryError(
+    err: unknown,
+    notFoundMessage: string,
+    registryAddress?: string,
+): never {
+    if (isRegistryQueryError(err)) {
+        throw new Error(notFoundMessage, { cause: err });
+    }
+    if (isRegistryDecodeShapeError(err)) {
+        const where = registryAddress ? `the registry at ${registryAddress}` : "the registry";
+        throw new Error(
+            `failed to decode registry response — ${where} may be a different generation than this CLI supports`,
+            { cause: err },
+        );
+    }
+    throw err;
 }
 
 function unwrapOption<T>(val: unknown): T | undefined {
@@ -90,21 +149,27 @@ function metadataObject(value: unknown, library: string): Record<string, unknown
 }
 
 function queryFailure(action: string, library: string, value: unknown): Error {
-    return new Error(`${action} for "${library}": ${stringifyBigInt(value)}`);
+    // Registry rejections are typed SolErrors surfaced as revert info with a
+    // decoded errorName (`Unauthorized()`, `ContractFrozen()`, …) — print the
+    // signature instead of the raw revert-info JSON blob when present.
+    const detail = decodedErrorSignature(value) ?? stringifyBigInt(value);
+    return new Error(`${action} for "${library}": ${detail}`);
 }
 
 async function queryLatest(
     library: string,
     registry: RegistryContract,
+    registryAddress?: string,
 ): Promise<{ version: number; metadataCid: string; contractAddress: string }> {
     let versionResult;
     try {
         versionResult = await registry.getVersionCount.query(library);
     } catch (err) {
-        if (isRegistryQueryError(err)) {
-            throw new Error(`Contract "${library}" not found in registry`, { cause: err });
-        }
-        throw err;
+        rethrowRegistryQueryError(
+            err,
+            `Contract "${library}" not found in registry`,
+            registryAddress,
+        );
     }
     if (!versionResult.success) {
         throw queryFailure("Failed to query registry version count", library, versionResult.value);
@@ -118,12 +183,11 @@ async function queryLatest(
     try {
         metaResult = await registry.getMetadataUri.query(library);
     } catch (err) {
-        if (isRegistryQueryError(err)) {
-            throw new Error(`Failed to fetch metadata for "${library}" from registry`, {
-                cause: err,
-            });
-        }
-        throw err;
+        rethrowRegistryQueryError(
+            err,
+            `Failed to fetch metadata for "${library}" from registry`,
+            registryAddress,
+        );
     }
     if (!metaResult.success) {
         throw queryFailure("Failed to query metadata URI", library, metaResult.value);
@@ -137,12 +201,11 @@ async function queryLatest(
     try {
         addrResult = await registry.getAddress.query(library);
     } catch (err) {
-        if (isRegistryQueryError(err)) {
-            throw new Error(`Failed to fetch address for "${library}" from registry`, {
-                cause: err,
-            });
-        }
-        throw err;
+        rethrowRegistryQueryError(
+            err,
+            `Failed to fetch address for "${library}" from registry`,
+            registryAddress,
+        );
     }
     if (!addrResult.success) {
         throw queryFailure("Failed to query address", library, addrResult.value);
@@ -156,17 +219,17 @@ async function queryVersion(
     library: string,
     requestedVersion: number,
     registry: RegistryContract,
+    registryAddress?: string,
 ): Promise<{ version: number; metadataCid: string; contractAddress: string }> {
     let metaResult;
     try {
         metaResult = await registry.getMetadataUriAtVersion.query(library, requestedVersion);
     } catch (err) {
-        if (isRegistryQueryError(err)) {
-            throw new Error(`Version ${requestedVersion} of "${library}" not found in registry`, {
-                cause: err,
-            });
-        }
-        throw err;
+        rethrowRegistryQueryError(
+            err,
+            `Version ${requestedVersion} of "${library}" not found in registry`,
+            registryAddress,
+        );
     }
     if (!metaResult.success) {
         throw queryFailure(
@@ -184,13 +247,11 @@ async function queryVersion(
     try {
         addrResult = await registry.getAddressAtVersion.query(library, requestedVersion);
     } catch (err) {
-        if (isRegistryQueryError(err)) {
-            throw new Error(
-                `Failed to fetch address for "${library}" version ${requestedVersion} from registry`,
-                { cause: err },
-            );
-        }
-        throw err;
+        rethrowRegistryQueryError(
+            err,
+            `Failed to fetch address for "${library}" version ${requestedVersion} from registry`,
+            registryAddress,
+        );
     }
     if (!addrResult.success) {
         throw queryFailure(
@@ -216,8 +277,8 @@ async function installOne(
 
     const { version, metadataCid, contractAddress } =
         requestedVersion === "latest"
-            ? await queryLatest(library, opts.registry)
-            : await queryVersion(library, requestedVersion, opts.registry);
+            ? await queryLatest(library, opts.registry, opts.registryAddress)
+            : await queryVersion(library, requestedVersion, opts.registry, opts.registryAddress);
 
     emit?.({ type: "query-done", library, version, address: contractAddress, metadataCid });
     emit?.({ type: "fetch-start", library, metadataCid });
@@ -413,6 +474,33 @@ if (import.meta.vitest) {
 
         test("does not classify unrelated errors mentioning hex values as registry misses", () => {
             expect(isRegistryQueryError(new Error("connection refused to 0xabc node"))).toBe(false);
+        });
+
+        test("rewrites decode-shape errors to a generation-mismatch message", async () => {
+            const original = new Error(
+                'Bytes value "0x2e516d..." is not a valid boolean. The bytes array must contain a single byte of either a 0 or 1 value.',
+            );
+            original.name = "InvalidBytesBooleanError";
+            const registry = {
+                getVersionCount: {
+                    query: async () => {
+                        throw original;
+                    },
+                },
+            } as unknown as RegistryContract;
+
+            await expect(
+                queryLatest("@example/counter", registry, "0xregistry"),
+            ).rejects.toMatchObject({
+                message:
+                    "failed to decode registry response — the registry at 0xregistry may be a different generation than this CLI supports",
+                cause: original,
+            });
+        });
+
+        test("still classifies zero-data errors as misses, not generation mismatches", () => {
+            const err = new Error('Cannot decode zero data ("0x") with ABI parameters.');
+            expect(isRegistryQueryError(err)).toBe(true);
         });
 
         test("surfaces RPC failures instead of rewriting them to contract-not-found", async () => {

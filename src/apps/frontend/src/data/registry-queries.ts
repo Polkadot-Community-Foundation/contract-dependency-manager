@@ -2,12 +2,6 @@ import { stringifyBigInt } from "@parity/cdm-utils";
 import type { Package, AbiEntry } from "./types";
 import type { RegistryContract } from "../utils/contracts";
 
-export interface ContractNameSearchPage {
-    names: string[];
-    nextOffset: number;
-    done: boolean;
-}
-
 export interface ContractPage {
     total: number;
     packages: Package[];
@@ -122,43 +116,6 @@ export async function queryContractsPage(
     const result = await registry.getContracts.query(start, count);
     if (!result.success) throw registryQueryError("Failed to query contract page", result.value);
     return parseContractPage(result.value);
-}
-
-function parseSearchPage(value: unknown): ContractNameSearchPage {
-    if (Array.isArray(value)) {
-        return {
-            names: Array.isArray(value[0]) ? value[0] : [],
-            nextOffset: Number(value[1] ?? 0),
-            done: Boolean(value[2]),
-        };
-    }
-
-    if (value && typeof value === "object") {
-        const page = value as {
-            names?: unknown;
-            next_offset?: unknown;
-            nextOffset?: unknown;
-            done?: unknown;
-        };
-        return {
-            names: Array.isArray(page.names) ? (page.names as string[]) : [],
-            nextOffset: Number(page.next_offset ?? page.nextOffset ?? 0),
-            done: Boolean(page.done),
-        };
-    }
-
-    return { names: [], nextOffset: 0, done: true };
-}
-
-export async function queryContractNamesByPrefix(
-    registry: RegistryContract,
-    prefix: string,
-    offset: number,
-    limit: number,
-): Promise<ContractNameSearchPage> {
-    const result = await registry.searchContractNames.query(prefix, offset, limit);
-    if (!result.success) throw registryQueryError("Failed to search contract names", result.value);
-    return parseSearchPage(result.value);
 }
 
 export interface PackageVersionInfo {

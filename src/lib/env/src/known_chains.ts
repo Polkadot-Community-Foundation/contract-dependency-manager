@@ -72,7 +72,9 @@ export const KNOWN_CHAINS = {
     local: {
         assethubUrl: "ws://127.0.0.1:10020",
         bulletinUrl: "ws://127.0.0.1:10030",
-        ipfsGatewayUrl: "http://127.0.0.1:8283/ipfs",
+        // PPN (product-preview-net) serves its IPFS gateway on 8080
+        // (config/ports.env IPFS_GATEWAY_PORT).
+        ipfsGatewayUrl: "http://127.0.0.1:8080/ipfs",
         registryAddress: getRegistryAddress("local"),
     },
 } as const satisfies Record<string, ChainPreset>;

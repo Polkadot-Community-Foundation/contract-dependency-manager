@@ -2,6 +2,10 @@
 resolver = "2"
 members = [
     "src/contract",
+    "src/contract/core",
+    "src/contract/create3/child",
+    "src/contract/create3/factory",
+    "src/contract/proxy",
     "src/lib/cdm/rust",
     "src/lib/cdm/rust-macros",
     "src/lib/cdm/rust-macros/pvm-cdm",
@@ -19,7 +23,7 @@ repository = "https://github.com/paritytech/contract-dependency-manager"
 [workspace.dependencies]
 pvm-contract-sdk = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "main", features = ["alloc"] }
 pvm-cdm = { path = "src/lib/cdm/rust-macros/pvm-cdm" }
-polkavm-derive = "0.31"
+polkavm-derive = "0.35"
 picoalloc = "5.2"
 cdm = { path = "src/lib/cdm/rust" }
 cdm-macros = { path = "src/lib/cdm/rust-macros" }

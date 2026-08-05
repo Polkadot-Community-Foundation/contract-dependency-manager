@@ -161,6 +161,7 @@ install.action(async (libraries: string[], rawOpts: InstallOptions) => {
     const { results, success } = await runInstallWithUI({
         libraries: toInstall,
         registry,
+        registryAddress,
         ipfs,
         artifactsDir,
         ipfsGatewayUrl: opts.ipfsGatewayUrl,
