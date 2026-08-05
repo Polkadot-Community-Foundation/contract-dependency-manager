@@ -1,5 +1,16 @@
 # @dotdm/env
 
+## 2.3.0
+
+### Minor Changes
+
+- f373a8e: Point the paseo preset at the new-generation registry (`0xc1a73a4f93fde65b1cb1680baead248073566cb0`) — the EIP-1967 proxy deployed via the CREATE3 factory and migrated from the old registry — and fix the local preset's IPFS gateway port to match PPN (8080).
+
+### Patch Changes
+
+- Updated dependencies [e67c5c7]
+  - @parity/cdm-utils@0.5.0
+
 ## 2.2.0
 
 ### Minor Changes
