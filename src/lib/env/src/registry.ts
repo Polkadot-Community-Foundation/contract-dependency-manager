@@ -1,7 +1,10 @@
 export type ProductSdkEnvironment = "paseo" | "devnet" | "summit";
 
 const POLKADOT_REGISTRY_ADDRESS = "";
-const PASEO_REGISTRY_ADDRESS = "0x7671a84f5e7b1bf704f0ad3f43a185ff3d4b303f";
+// New-generation registry (EIP-1967 proxy via the CREATE3 factory,
+// @cdm/registry.2). Migrated from 0x7671a84f5e7b1bf704f0ad3f43a185ff3d4b303f
+// on 2026-08-05; the old registry remains on-chain but is unmaintained.
+const PASEO_REGISTRY_ADDRESS = "0xc1a73a4f93fde65b1cb1680baead248073566cb0";
 // ContractRegistry operated by the Polkadot Community Foundation on the Paseo
 // testnet Asset Hub (para 1000, EVM chain id 420420417) for its public
 // "products devnet". Community-owned, not deployed by this repo's tooling.
