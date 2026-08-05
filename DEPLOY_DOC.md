@@ -29,7 +29,13 @@ cargo install --force --locked \
 
 Use a funded W3S/Summit Asset Hub deployer mnemonic. CDM saves this account later so registry queries use a mapped origin.
 
-The deploy is two-step and idempotent: the implementation blob lands first (CREATE2), then the proxy pointing at it (CREATE2). The **proxy address is the registry address** — it never changes. The proxy's deployer becomes the registry admin; later implementation upgrades are done by the admin calling `setCode(<new implementation address>)` through the proxy — the proxy is never redeployed.
+The deploy is idempotent and runs up to three steps, skipping any that already happened:
+
+1. **CREATE3 factory bootstrap** (first deploy on a network only): the frozen factory/child blobs committed at `src/contract/create3/artifacts/` are uploaded/deployed — the child via `Revive.upload_code`, the factory via CREATE2 from the deployer EOA. Same EOA ⇒ same factory address on every network. See [src/contract/create3/README.md](src/contract/create3/README.md).
+2. **Implementation blob** via plain CREATE2 — its address doesn't matter.
+3. **EIP-1967 proxy THROUGH the factory**: proxy code is uploaded (`upload_code`), then `factory.deploy(salt, proxyCodeHash, implAddress)` lands it at an address that is a pure function of `(factory, salt)` — independent of the proxy bytecode and the implementation address.
+
+The **proxy address is the registry address** — it never changes, even across proxy bytecode revisions. The proxy's deployer becomes the registry admin; later implementation upgrades are done by the admin calling `setCode(<new implementation address>)` through the proxy — the proxy is never redeployed.
 
 ```bash
 export CDM_DEPLOY_SURI="<deployer-mnemonic>"
@@ -42,7 +48,7 @@ Copy the deployed proxy address from:
 CONTRACTS_REGISTRY_ADDR=0x...
 ```
 
-(The script also prints `CONTRACTS_REGISTRY_IMPL_ADDR=0x...` — the implementation blob the proxy currently delegates to; you normally don't need it.)
+(The script also prints `CONTRACTS_REGISTRY_IMPL_ADDR=0x...` — the implementation blob the proxy currently delegates to — and `CREATE3_FACTORY_ADDR=0x...` — the factory the proxy was deployed through; you normally don't need either.)
 
 ## 4. Open Address PR
 

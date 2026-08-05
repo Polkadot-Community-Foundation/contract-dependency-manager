@@ -238,7 +238,7 @@ export async function importRegistrySnapshot(
     snapshot: RegistryMigrationSnapshot,
     opts: ImportOptions,
     onProgress?: (progress: ImportProgress) => void,
-): Promise<void> {
+): Promise<{ imported: number; skipped: number }> {
     const batchSize = opts.batchSize ?? 10;
     if (!Number.isInteger(batchSize) || batchSize <= 0) {
         throw new Error(`Invalid batch size: ${batchSize}`);
@@ -251,10 +251,29 @@ export async function importRegistrySnapshot(
         origin: ss58Address(signer.publicKey),
     });
     try {
-        const total = snapshot.contracts.length;
+        // Probe the target registry first and skip contracts that already
+        // exist: adminImportContracts rejects duplicates with
+        // ImportContractExists, so without this a half-failed run could never
+        // be retried.
+        const remaining: MigratedContract[] = [];
+        for (const contract of snapshot.contracts) {
+            const countResult = await connection.registry.getVersionCount.query(
+                contract.contract_name,
+            );
+            const versionCount = Number(
+                requireSuccess<number>(countResult, `getVersionCount(${contract.contract_name})`),
+            );
+            if (versionCount === 0) remaining.push(contract);
+        }
+        const skipped = snapshot.contracts.length - remaining.length;
+        if (skipped > 0) {
+            console.log(`skipped ${skipped} already-imported contracts`);
+        }
+
+        const total = remaining.length;
         const totalBatches = Math.ceil(total / batchSize);
         for (let start = 0; start < total; start += batchSize) {
-            const batch = snapshot.contracts.slice(start, start + batchSize);
+            const batch = remaining.slice(start, start + batchSize);
             const result = await connection.registry.adminImportContracts.tx(batch);
             if (!result.ok) {
                 throw new Error(
@@ -269,6 +288,7 @@ export async function importRegistrySnapshot(
                 totalBatches,
             });
         }
+        return { imported: total, skipped };
     } finally {
         connection.destroy();
     }

@@ -16,11 +16,15 @@ import type { AbiEntry, AbiParam } from "@parity/product-sdk-contracts";
  * implementation's ABI) is used AT THE PROXY ADDRESS. The proxy's own ABI is
  * only needed to deploy it (`constructor(address implementation)`).
  *
- * Naming note: the generated JSON leaves function output names empty; the
- * multi-output entries here carry descriptive names (`isSome`/`value`,
- * `total`/`entries`) because product-sdk keys multi-output decode results by
- * output name. Names are display/decode keys only — types and order are
- * bit-exact with the generated ABI.
+ * Multi-value returns use the HISTORICAL single-tuple wire encoding — each
+ * such function has ONE unnamed tuple-typed output with named components —
+ * matching every already-deployed registry so old CLIs keep decoding.
+ *
+ * Naming note: where the generated JSON names a tuple component `is_some`,
+ * this file uses the historical `isSome` (product-sdk keys decoded objects by
+ * component name and every consumer reads `isSome`/`value`). Names are
+ * display/decode keys only — types, structure, and order are bit-exact with
+ * the generated ABI.
  */
 
 /** Generated-ABI entry shape: `AbiEntry` plus the event-only fields. */
@@ -129,8 +133,14 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
         name: "getAddress",
         inputs: [{ name: "contract_name", type: "string" }],
         outputs: [
-            { name: "isSome", type: "bool" },
-            { name: "value", type: "address" },
+            {
+                name: "",
+                type: "tuple",
+                components: [
+                    { name: "isSome", type: "bool" },
+                    { name: "value", type: "address" },
+                ],
+            },
         ],
         stateMutability: "view",
     },
@@ -139,8 +149,14 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
         name: "getMetadataUri",
         inputs: [{ name: "contract_name", type: "string" }],
         outputs: [
-            { name: "isSome", type: "bool" },
-            { name: "value", type: "string" },
+            {
+                name: "",
+                type: "tuple",
+                components: [
+                    { name: "isSome", type: "bool" },
+                    { name: "value", type: "string" },
+                ],
+            },
         ],
         stateMutability: "view",
     },
@@ -152,8 +168,14 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
             { name: "version", type: "uint32" },
         ],
         outputs: [
-            { name: "isSome", type: "bool" },
-            { name: "value", type: "address" },
+            {
+                name: "",
+                type: "tuple",
+                components: [
+                    { name: "isSome", type: "bool" },
+                    { name: "value", type: "address" },
+                ],
+            },
         ],
         stateMutability: "view",
     },
@@ -165,8 +187,14 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
             { name: "version", type: "uint32" },
         ],
         outputs: [
-            { name: "isSome", type: "bool" },
-            { name: "value", type: "string" },
+            {
+                name: "",
+                type: "tuple",
+                components: [
+                    { name: "isSome", type: "bool" },
+                    { name: "value", type: "string" },
+                ],
+            },
         ],
         stateMutability: "view",
     },
@@ -185,16 +213,22 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
             { name: "count", type: "uint32" },
         ],
         outputs: [
-            { name: "total", type: "uint32" },
             {
-                name: "entries",
-                type: "tuple[]",
+                name: "",
+                type: "tuple",
                 components: [
-                    { name: "name", type: "string" },
-                    { name: "version", type: "uint32" },
-                    { name: "address", type: "address" },
-                    { name: "metadata_uri", type: "string" },
-                    { name: "owner", type: "address" },
+                    { name: "total", type: "uint32" },
+                    {
+                        name: "entries",
+                        type: "tuple[]",
+                        components: [
+                            { name: "name", type: "string" },
+                            { name: "version", type: "uint32" },
+                            { name: "address", type: "address" },
+                            { name: "metadata_uri", type: "string" },
+                            { name: "owner", type: "address" },
+                        ],
+                    },
                 ],
             },
         ],
@@ -230,6 +264,7 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
     { type: "error", name: "ImportVersionsEmpty", inputs: [] },
     { type: "error", name: "ImportContractExists", inputs: [] },
     { type: "error", name: "VersionOverflow", inputs: [] },
+    { type: "error", name: "BadImplementation", inputs: [] },
     {
         type: "event",
         name: "Published",
@@ -273,7 +308,10 @@ export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = REGISTRY_ABI;
 const REGISTRY_PROXY_ABI: RegistryAbiEntry[] = [
     {
         type: "constructor",
-        inputs: [{ name: "implementation", type: "address" }],
+        inputs: [
+            { name: "implementation", type: "address" },
+            { name: "admin", type: "address" },
+        ],
         stateMutability: "nonpayable",
     },
     { type: "error", name: "InvalidCalldata", inputs: [] },

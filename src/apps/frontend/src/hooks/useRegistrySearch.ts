@@ -27,9 +27,15 @@ export function useRegistrySearch(query: string) {
         return packages.filter((pkg) => pkg.name.toLowerCase().includes(needle));
     }, [packages, needle]);
 
+    // The eager drain leaves brief `loading === false` gaps between page
+    // fetches; `searching` stays true until every page has been drained so
+    // consumers don't flash "no results" mid-drain.
+    const searching = Boolean(needle) && !error && (loading || hasMore);
+
     return {
         packages: filtered,
         loading,
+        searching,
         error,
         hasMore,
         loadMore,

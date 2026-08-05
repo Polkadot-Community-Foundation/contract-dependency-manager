@@ -1,8 +1,11 @@
 #!/usr/bin/env bun
 /**
- * Deploy the ContractRegistry to Asset Hub — a two-step deploy: the
- * implementation blob first, then the EIP-1967 proxy pointing at it. The
- * proxy address is the stable registry address (CONTRACTS_REGISTRY_ADDR).
+ * Deploy the ContractRegistry to Asset Hub via the CREATE3 factory:
+ * (i) bootstrap the frozen CREATE3 factory if the network lacks it,
+ * (ii) CREATE2 the implementation blob, (iii) upload the EIP-1967 proxy code
+ * and deploy it THROUGH the factory. The proxy address is the stable
+ * registry address (CONTRACTS_REGISTRY_ADDR) — a pure function of
+ * (factory, salt), independent of any bytecode or constructor input.
  *
  * Usage:
  *   bun run src/lib/scripts/deploy-registry.ts --name local
@@ -20,15 +23,19 @@ import {
     prepareSignerFromMnemonic,
     prepareSignerFromSuri,
     getChainPreset,
+    resolveQueryOrigin,
     ss58Address,
     type CdmDeployAssetHubApi,
 } from "@parity/cdm-env";
-import { CONTRACTS_REGISTRY_PACKAGE } from "@parity/cdm-utils";
+import { createContractFromClient } from "@parity/product-sdk-contracts";
+import { CONTRACTS_REGISTRY_PACKAGE, CREATE3_FACTORY_PACKAGE } from "@parity/cdm-utils";
 import { getAccount } from "@parity/cdm-utils/accounts";
 import {
     ContractDeployer,
+    CONTRACTS_REGISTRY_ABI,
     CONTRACTS_REGISTRY_CRATE,
     CONTRACTS_REGISTRY_PROXY_CRATE,
+    CREATE3_FACTORY_ABI,
     predictRegistryDeploy,
     deployRegistryWithProxy,
 } from "@parity/cdm-builder";
@@ -151,10 +158,34 @@ try {
     // already mapped
 }
 
-// Predict both CREATE2 addresses (implementation + proxy). The proxy address
-// is the registry address consumers use, so all idempotence/preflight checks
-// below compare against `expected.proxy.address`.
-const expected = await predictRegistryDeploy(deployer, implPvmPath, proxyPvmPath);
+// Predict every address offline (CREATE3 factory, implementation, registry
+// proxy). The registry address is a pure function of (factory, salt), so all
+// idempotence/preflight checks below compare against
+// `expected.registryAddress`.
+const expected = predictRegistryDeploy(deployer, rootDir, implPvmPath);
+
+/**
+ * Query the live implementation address via the registry proxy's `getCode()`.
+ * The CREATE2 prediction only matches the initial deployment — after any
+ * `setCode` upgrade the live implementation differs, so an already-deployed
+ * registry must be asked, not predicted.
+ */
+async function queryLiveImplementation(registryAddress: string): Promise<string | undefined> {
+    try {
+        const registry = await createContractFromClient(
+            chainClient.raw.assetHub,
+            chainClient.descriptors.assetHub,
+            registryAddress as `0x${string}`,
+            CONTRACTS_REGISTRY_ABI,
+            { defaultOrigin: resolveQueryOrigin({ chainName: opts.name, assethubUrl }) },
+        );
+        const result = await registry.getCode.query();
+        if (result.success && typeof result.value === "string") return result.value;
+    } catch {
+        // old-generation registry without getCode(); fall through
+    }
+    return undefined;
+}
 
 async function finishWithRegistry(address: string, alreadyDeployed: boolean): Promise<void> {
     try {
@@ -185,7 +216,19 @@ async function finishWithRegistry(address: string, alreadyDeployed: boolean): Pr
             );
         }
 
-        console.log(`\nCONTRACTS_REGISTRY_IMPL_ADDR=${expected.impl.address}`);
+        // For an already-deployed registry the predicted implementation is
+        // wrong after any setCode upgrade — ask the proxy for the live one.
+        const implAddress = alreadyDeployed
+            ? await queryLiveImplementation(address)
+            : expected.implAddress;
+        if (implAddress) {
+            console.log(`\nCONTRACTS_REGISTRY_IMPL_ADDR=${implAddress}`);
+        } else {
+            console.warn(
+                `\nCould not query getCode() on ${address} — the registry may predate the proxy split.`,
+            );
+        }
+        console.log(`CREATE3_FACTORY_ADDR=${expected.factoryAddress}`);
         console.log(`CONTRACTS_REGISTRY_ADDR=${address}`);
     } finally {
         chainClient.destroy();
@@ -197,7 +240,7 @@ if (selectedRegistryAddress) {
         selectedRegistryAddress as `0x${string}`,
     );
     if (info?.account_type.type === "Contract") {
-        if (expected.proxy.address.toLowerCase() === selectedRegistryAddress.toLowerCase()) {
+        if (expected.registryAddress.toLowerCase() === selectedRegistryAddress.toLowerCase()) {
             console.log(`ContractRegistry already deployed at ${selectedRegistryAddress}`);
             await finishWithRegistry(selectedRegistryAddress, true);
             process.exit(0);
@@ -208,48 +251,58 @@ if (selectedRegistryAddress) {
 if (
     hasExplicitRegistryAddress &&
     selectedRegistryAddress &&
-    expected.proxy.address.toLowerCase() !== selectedRegistryAddress.toLowerCase()
+    expected.registryAddress.toLowerCase() !== selectedRegistryAddress.toLowerCase()
 ) {
     console.error(
-        `Refusing to deploy ContractRegistry: signer ${ss58Address(signer.publicKey)} and current bytecode would deploy ${expected.proxy.address}, but the selected target uses ${selectedRegistryAddress}.`,
+        `Refusing to deploy ContractRegistry: signer ${ss58Address(signer.publicKey)} would deploy ${expected.registryAddress}, but the selected target uses ${selectedRegistryAddress}.`,
     );
     console.error(
-        "Use the matching deployer/bytecode for this target, or pass --registry-address for a separate registry target.",
+        "Use the matching deployer for this target, or pass --registry-address for a separate registry target.",
     );
     chainClient.destroy();
     process.exit(1);
 }
 
 const expectedInfo = await chainClient.assetHub.query.Revive.AccountInfoOf.getValue(
-    expected.proxy.address as `0x${string}`,
+    expected.registryAddress as `0x${string}`,
 );
 if (expectedInfo?.account_type.type === "Contract") {
-    console.log(`ContractRegistry already deployed at ${expected.proxy.address}`);
-    await finishWithRegistry(expected.proxy.address, true);
+    console.log(`ContractRegistry already deployed at ${expected.registryAddress}`);
+    await finishWithRegistry(expected.registryAddress, true);
     process.exit(0);
 }
 
 if (
     !hasExplicitRegistryAddress &&
     selectedRegistryAddress &&
-    expected.proxy.address.toLowerCase() !== selectedRegistryAddress.toLowerCase()
+    expected.registryAddress.toLowerCase() !== selectedRegistryAddress.toLowerCase()
 ) {
     console.warn(
-        `Selected preset currently points at ${selectedRegistryAddress}, but this deployment will create ${expected.proxy.address}.`,
+        `Selected preset currently points at ${selectedRegistryAddress}, but this deployment will create ${expected.registryAddress}.`,
     );
     console.warn("Update the preset registry address after deployment.");
 }
 
-// Deploy with CREATE2 for deterministic addresses: implementation blob first
-// (skipped when already on-chain), then the proxy pointing at it.
+// Deploy: CREATE3 factory bootstrap (if needed), then the implementation
+// blob (plain CREATE2, skipped when already on-chain), then the proxy
+// THROUGH the factory. The proxy address depends only on (factory, salt).
 console.log(
-    `Deploying ContractRegistry implementation + proxy (proxy CREATE2 salt: "${CONTRACTS_REGISTRY_PACKAGE}")...`,
+    `Deploying ContractRegistry via CREATE3 (factory salt "${CREATE3_FACTORY_PACKAGE}", registry salt "${CONTRACTS_REGISTRY_PACKAGE}")...`,
 );
-const { implAddress, proxyAddress } = await deployRegistryWithProxy(
-    deployer,
+const { implAddress, proxyAddress } = await deployRegistryWithProxy(deployer, {
+    rootDir,
     implPvmPath,
     proxyPvmPath,
-    expected,
-);
+    factoryContract: (factoryAddress) =>
+        createContractFromClient(
+            chainClient.raw.assetHub,
+            chainClient.descriptors.assetHub,
+            factoryAddress as `0x${string}`,
+            CREATE3_FACTORY_ABI,
+            { defaultSigner: signer, defaultOrigin: ss58Address(signer.publicKey) },
+        ),
+    prediction: expected,
+    log: console.log,
+});
 console.log(`Implementation deployed at ${implAddress}`);
 await finishWithRegistry(proxyAddress, false);

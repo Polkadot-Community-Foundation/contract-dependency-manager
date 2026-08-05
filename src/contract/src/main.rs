@@ -114,6 +114,13 @@ mod contract_registry {
         #[pvm_contract_sdk::method]
         pub fn set_code(&mut self, new_implementation: Address) -> Result<(), Error> {
             self.require_admin()?;
+            // A codeless target would brick the registry address forever.
+            // On-chain only: MockHost has no way to seed code sizes, so the
+            // guard is exercised by the e2e suite instead of unit tests.
+            #[cfg(target_arch = "riscv64")]
+            if self.host().code_size(&new_implementation.0) == 0 {
+                return Err(BadImplementation.into());
+            }
             self.implementation.set(&new_implementation);
             Upgraded {
                 implementation: new_implementation,
@@ -210,26 +217,22 @@ mod contract_registry {
 
         // ─── Queries ─────────────────────────────────────────────────────
 
-        /// Latest published address for `contract_name`, as `(found, value)`.
-        /// This is the hot path used by `cdm::import!` runtime lookups.
+        /// Latest published address for `contract_name`, as an option-shaped
+        /// `(bool isSome, address value)` tuple. This is the hot path used by
+        /// `cdm::import!` runtime lookups.
         #[pvm_contract_sdk::method]
-        pub fn get_address(&self, contract_name: String) -> (bool, Address) {
-            match self.latest_version(&contract_name) {
-                Some(version) => (true, self.address_of.view(&contract_name).get(&version)),
-                None => (false, Address::ZERO),
-            }
+        pub fn get_address(&self, contract_name: String) -> OptionalAddress {
+            self.latest_version(&contract_name)
+                .map(|version| self.address_of.view(&contract_name).get(&version))
+                .into()
         }
 
-        /// Latest metadata URI for `contract_name`, as `(found, value)`.
+        /// Latest metadata URI for `contract_name`, option-shaped.
         #[pvm_contract_sdk::method]
-        pub fn get_metadata_uri(&self, contract_name: String) -> (bool, String) {
-            match self.latest_version(&contract_name) {
-                Some(version) => (
-                    true,
-                    self.metadata_uri_of.view(&contract_name).get(&version),
-                ),
-                None => (false, String::new()),
-            }
+        pub fn get_metadata_uri(&self, contract_name: String) -> OptionalString {
+            self.latest_version(&contract_name)
+                .map(|version| self.metadata_uri_of.view(&contract_name).get(&version))
+                .into()
         }
 
         #[pvm_contract_sdk::method]
@@ -237,11 +240,10 @@ mod contract_registry {
             &self,
             contract_name: String,
             version: u32,
-        ) -> (bool, Address) {
-            if version >= self.info.get(&contract_name).version_count {
-                return (false, Address::ZERO);
-            }
-            (true, self.address_of.view(&contract_name).get(&version))
+        ) -> OptionalAddress {
+            self.version_exists(&contract_name, version)
+                .then(|| self.address_of.view(&contract_name).get(&version))
+                .into()
         }
 
         #[pvm_contract_sdk::method]
@@ -249,14 +251,10 @@ mod contract_registry {
             &self,
             contract_name: String,
             version: u32,
-        ) -> (bool, String) {
-            if version >= self.info.get(&contract_name).version_count {
-                return (false, String::new());
-            }
-            (
-                true,
-                self.metadata_uri_of.view(&contract_name).get(&version),
-            )
+        ) -> OptionalString {
+            self.version_exists(&contract_name, version)
+                .then(|| self.metadata_uri_of.view(&contract_name).get(&version))
+                .into()
         }
 
         /// The contract name at a registration index; empty when out of range.
@@ -265,10 +263,9 @@ mod contract_registry {
             self.names.try_get(index as u64).unwrap_or_default()
         }
 
-        /// A page of latest contract entries by registration index, as
-        /// `(total, entries)`.
+        /// A page of latest contract entries by registration index.
         #[pvm_contract_sdk::method]
-        pub fn get_contracts(&self, start: u32, count: u32) -> (u32, Vec<ContractEntry>) {
+        pub fn get_contracts(&self, start: u32, count: u32) -> ContractPage {
             let total = self.names.len() as u32;
             let end = start.saturating_add(count.min(MAX_PAGE_LIMIT)).min(total);
             let mut entries = Vec::new();
@@ -279,7 +276,7 @@ mod contract_registry {
                     }
                 }
             }
-            (total, entries)
+            ContractPage { total, entries }
         }
 
         #[pvm_contract_sdk::method]
@@ -323,6 +320,10 @@ mod contract_registry {
         /// Latest published version index, `None` for unregistered names.
         fn latest_version(&self, contract_name: &String) -> Option<u32> {
             self.info.get(contract_name).version_count.checked_sub(1)
+        }
+
+        fn version_exists(&self, contract_name: &String, version: u32) -> bool {
+            version < self.info.get(contract_name).version_count
         }
 
         fn latest_entry(&self, name: String) -> Option<ContractEntry> {
@@ -380,8 +381,8 @@ mod tests {
     use super::contract_registry::{self, ContractRegistry};
     use super::types::{
         ContractEntry, ContractFrozen, ContractNameEmpty, ContractNameInvalid, ContractNameTooLong,
-        ImportContract, ImportContractExists, ImportContractVersion, ImportVersionsEmpty,
-        Unauthorized, UnauthorizedAdmin,
+        ContractPage, ImportContract, ImportContractExists, ImportContractVersion,
+        ImportVersionsEmpty, OptionalAddress, OptionalString, Unauthorized, UnauthorizedAdmin,
     };
     use pvm_contract_sdk::{
         Address, MockHost, MockHostBuilder, OutSink, Outcome, SolEncode, const_selector, keccak256,
@@ -469,6 +470,38 @@ mod tests {
         keccak256(signature.as_bytes())
     }
 
+    fn some_addr(address: [u8; 20]) -> OptionalAddress {
+        OptionalAddress {
+            is_some: true,
+            value: Address(address),
+        }
+    }
+
+    fn none_addr() -> OptionalAddress {
+        OptionalAddress {
+            is_some: false,
+            value: Address::ZERO,
+        }
+    }
+
+    fn some_uri(uri: &str) -> OptionalString {
+        OptionalString {
+            is_some: true,
+            value: uri.into(),
+        }
+    }
+
+    fn none_uri() -> OptionalString {
+        OptionalString {
+            is_some: false,
+            value: String::new(),
+        }
+    }
+
+    fn page(total: u32, entries: Vec<ContractEntry>) -> ContractPage {
+        ContractPage { total, entries }
+    }
+
     // ─── Constructor ─────────────────────────────────────────────────────────
 
     #[test]
@@ -492,11 +525,8 @@ mod tests {
 
         assert_eq!(contract.get_owner(NAME.into()), Address(ALICE));
         assert_eq!(contract.get_version_count(NAME.into()), 1);
-        assert_eq!(contract.get_address(NAME.into()), (true, Address(ADDR_1)));
-        assert_eq!(
-            contract.get_metadata_uri(NAME.into()),
-            (true, String::from(URI_1))
-        );
+        assert_eq!(contract.get_address(NAME.into()), some_addr(ADDR_1));
+        assert_eq!(contract.get_metadata_uri(NAME.into()), some_uri(URI_1));
         assert_eq!(contract.get_contract_count(), 1);
         assert_eq!(contract.get_contract_name_at(0), NAME);
     }
@@ -515,38 +545,32 @@ mod tests {
         );
 
         // Latest resolves to the second version.
-        assert_eq!(contract.get_address(NAME.into()), (true, Address(ADDR_2)));
-        assert_eq!(
-            contract.get_metadata_uri(NAME.into()),
-            (true, String::from(URI_2))
-        );
+        assert_eq!(contract.get_address(NAME.into()), some_addr(ADDR_2));
+        assert_eq!(contract.get_metadata_uri(NAME.into()), some_uri(URI_2));
 
         // Both historical versions resolve.
         assert_eq!(
             contract.get_address_at_version(NAME.into(), 0),
-            (true, Address(ADDR_1))
+            some_addr(ADDR_1)
         );
         assert_eq!(
             contract.get_address_at_version(NAME.into(), 1),
-            (true, Address(ADDR_2))
+            some_addr(ADDR_2)
         );
         assert_eq!(
             contract.get_metadata_uri_at_version(NAME.into(), 0),
-            (true, String::from(URI_1))
+            some_uri(URI_1)
         );
         assert_eq!(
             contract.get_metadata_uri_at_version(NAME.into(), 1),
-            (true, String::from(URI_2))
+            some_uri(URI_2)
         );
 
         // Version beyond the count → (false, default).
-        assert_eq!(
-            contract.get_address_at_version(NAME.into(), 2),
-            (false, Address::ZERO)
-        );
+        assert_eq!(contract.get_address_at_version(NAME.into(), 2), none_addr());
         assert_eq!(
             contract.get_metadata_uri_at_version(NAME.into(), u32::MAX),
-            (false, String::new())
+            none_uri()
         );
     }
 
@@ -563,7 +587,7 @@ mod tests {
 
         // Nothing changed.
         assert_eq!(as_bob.get_version_count(NAME.into()), 1);
-        assert_eq!(as_bob.get_address(NAME.into()), (true, Address(ADDR_1)));
+        assert_eq!(as_bob.get_address(NAME.into()), some_addr(ADDR_1));
         assert_eq!(as_bob.get_owner(NAME.into()), Address(ALICE));
     }
 
@@ -601,24 +625,18 @@ mod tests {
     fn unregistered_name_queries_return_defaults() {
         let (contract, _mock) = deployed(ALICE);
 
-        assert_eq!(contract.get_address(NAME.into()), (false, Address::ZERO));
-        assert_eq!(
-            contract.get_metadata_uri(NAME.into()),
-            (false, String::new())
-        );
-        assert_eq!(
-            contract.get_address_at_version(NAME.into(), 0),
-            (false, Address::ZERO)
-        );
+        assert_eq!(contract.get_address(NAME.into()), none_addr());
+        assert_eq!(contract.get_metadata_uri(NAME.into()), none_uri());
+        assert_eq!(contract.get_address_at_version(NAME.into(), 0), none_addr());
         assert_eq!(
             contract.get_metadata_uri_at_version(NAME.into(), 0),
-            (false, String::new())
+            none_uri()
         );
         assert_eq!(contract.get_owner(NAME.into()), Address::ZERO);
         assert_eq!(contract.get_version_count(NAME.into()), 0);
         assert_eq!(contract.get_contract_count(), 0);
         assert_eq!(contract.get_contract_name_at(0), "");
-        assert_eq!(contract.get_contracts(0, 10), (0, vec![]));
+        assert_eq!(contract.get_contracts(0, 10), page(0, vec![]));
     }
 
     // ─── getContracts paging ─────────────────────────────────────────────────
@@ -645,17 +663,17 @@ mod tests {
         // Full page: every entry carries its latest version.
         assert_eq!(
             contract.get_contracts(0, 10),
-            (3, vec![alpha(), beta(), gamma()])
+            page(3, vec![alpha(), beta(), gamma()])
         );
         // Partial pages.
-        assert_eq!(contract.get_contracts(0, 2), (3, vec![alpha(), beta()]));
-        assert_eq!(contract.get_contracts(1, 1), (3, vec![beta()]));
-        assert_eq!(contract.get_contracts(2, 10), (3, vec![gamma()]));
+        assert_eq!(contract.get_contracts(0, 2), page(3, vec![alpha(), beta()]));
+        assert_eq!(contract.get_contracts(1, 1), page(3, vec![beta()]));
+        assert_eq!(contract.get_contracts(2, 10), page(3, vec![gamma()]));
         // Start beyond the total → empty, total still reported.
-        assert_eq!(contract.get_contracts(3, 5), (3, vec![]));
-        assert_eq!(contract.get_contracts(u32::MAX, 5), (3, vec![]));
+        assert_eq!(contract.get_contracts(3, 5), page(3, vec![]));
+        assert_eq!(contract.get_contracts(u32::MAX, 5), page(3, vec![]));
         // Zero count → empty.
-        assert_eq!(contract.get_contracts(0, 0), (3, vec![]));
+        assert_eq!(contract.get_contracts(0, 0), page(3, vec![]));
     }
 
     #[test]
@@ -666,16 +684,16 @@ mod tests {
         }
 
         // Count above MAX_PAGE_LIMIT clamps to 100 entries; total is unaffected.
-        let (total, entries) = contract.get_contracts(0, 200);
-        assert_eq!(total, 101);
-        assert_eq!(entries.len(), 100);
-        assert_eq!(entries[0].name, "@scope/pkg0");
-        assert_eq!(entries[99].name, "@scope/pkg99");
+        let head = contract.get_contracts(0, 200);
+        assert_eq!(head.total, 101);
+        assert_eq!(head.entries.len(), 100);
+        assert_eq!(head.entries[0].name, "@scope/pkg0");
+        assert_eq!(head.entries[99].name, "@scope/pkg99");
 
-        let (total, tail) = contract.get_contracts(100, 200);
-        assert_eq!(total, 101);
-        assert_eq!(tail.len(), 1);
-        assert_eq!(tail[0].name, "@scope/pkg100");
+        let tail = contract.get_contracts(100, 200);
+        assert_eq!(tail.total, 101);
+        assert_eq!(tail.entries.len(), 1);
+        assert_eq!(tail.entries[0].name, "@scope/pkg100");
     }
 
     // ─── adminImportContracts ────────────────────────────────────────────────
@@ -701,29 +719,23 @@ mod tests {
         // Versions land in payload order; the latest resolves.
         assert_eq!(contract.get_version_count("@cdm/alpha".into()), 2);
         assert_eq!(contract.get_owner("@cdm/alpha".into()), Address(ALICE));
-        assert_eq!(
-            contract.get_address("@cdm/alpha".into()),
-            (true, Address(ADDR_2))
-        );
+        assert_eq!(contract.get_address("@cdm/alpha".into()), some_addr(ADDR_2));
         assert_eq!(
             contract.get_address_at_version("@cdm/alpha".into(), 0),
-            (true, Address(ADDR_1))
+            some_addr(ADDR_1)
         );
         assert_eq!(
             contract.get_metadata_uri_at_version("@cdm/alpha".into(), 0),
-            (true, String::from("ipfs://a0"))
+            some_uri("ipfs://a0")
         );
         assert_eq!(
             contract.get_metadata_uri("@cdm/alpha".into()),
-            (true, String::from("ipfs://a1"))
+            some_uri("ipfs://a1")
         );
 
         assert_eq!(contract.get_version_count("@cdm/beta".into()), 1);
         assert_eq!(contract.get_owner("@cdm/beta".into()), Address(BOB));
-        assert_eq!(
-            contract.get_address("@cdm/beta".into()),
-            (true, Address(ADDR_2))
-        );
+        assert_eq!(contract.get_address("@cdm/beta".into()), some_addr(ADDR_2));
     }
 
     #[test]
@@ -739,10 +751,7 @@ mod tests {
             Ok(())
         );
         assert_eq!(as_alice.get_version_count("@cdm/alpha".into()), 2);
-        assert_eq!(
-            as_alice.get_address("@cdm/alpha".into()),
-            (true, Address(ADDR_2))
-        );
+        assert_eq!(as_alice.get_address("@cdm/alpha".into()), some_addr(ADDR_2));
     }
 
     #[test]
@@ -870,11 +879,8 @@ mod tests {
         );
 
         // Reads keep working while frozen.
-        assert_eq!(as_alice.get_address(NAME.into()), (true, Address(ADDR_1)));
-        assert_eq!(
-            as_alice.get_metadata_uri(NAME.into()),
-            (true, String::from(URI_1))
-        );
+        assert_eq!(as_alice.get_address(NAME.into()), some_addr(ADDR_1));
+        assert_eq!(as_alice.get_metadata_uri(NAME.into()), some_uri(URI_1));
         assert_eq!(as_alice.get_contract_count(), 1);
     }
 
@@ -1039,6 +1045,64 @@ mod tests {
 
         let data = route_calldata(&mut contract, &cdm_lookup_calldata("@cdm/missing"));
         assert_eq!(data, [0u8; 64], "isSome byte 31 must be 0, address zeroed");
+    }
+
+    // The pre-proxy registry (old SDK line) encoded every multi-value return
+    // as ONE tuple output, which for dynamic returns carries a leading offset
+    // word. Every deployed registry and released CLI speaks that format, so
+    // these tests freeze it byte-for-byte. Do not "simplify" the return
+    // structs back to bare Rust tuples — that flattens the outputs and
+    // silently changes these bytes.
+    #[test]
+    fn get_metadata_uri_wire_format_matches_legacy_tuple_encoding() {
+        let (mut contract, _mock) = deployed(ALICE);
+        publish(&mut contract, NAME, ADDR_1, URI_1);
+
+        let mut calldata = const_selector("getMetadataUri(string)").to_vec();
+        calldata.extend_from_slice(&encode(&String::from(NAME)));
+        let data = route_calldata(&mut contract, &calldata);
+
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&word_u32(0x20)); // offset of the single tuple output
+        expected.extend_from_slice(&word_bool(true)); // isSome
+        expected.extend_from_slice(&word_u32(0x40)); // offset of `value` within the tuple
+        expected.extend_from_slice(&word_u32(URI_1.len() as u32));
+        let mut uri_word = [0u8; 32];
+        uri_word[..URI_1.len()].copy_from_slice(URI_1.as_bytes());
+        expected.extend_from_slice(&uri_word);
+        assert_eq!(data, expected);
+    }
+
+    #[test]
+    fn get_metadata_uri_wire_format_for_missing_name() {
+        let (mut contract, _mock) = deployed(ALICE);
+
+        let mut calldata = const_selector("getMetadataUri(string)").to_vec();
+        calldata.extend_from_slice(&encode(&String::from(NAME)));
+        let data = route_calldata(&mut contract, &calldata);
+
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&word_u32(0x20));
+        expected.extend_from_slice(&word_bool(false));
+        expected.extend_from_slice(&word_u32(0x40));
+        expected.extend_from_slice(&word_u32(0)); // empty string
+        assert_eq!(data, expected);
+    }
+
+    #[test]
+    fn get_contracts_wire_format_matches_legacy_tuple_encoding() {
+        let (mut contract, _mock) = deployed(ALICE);
+
+        let mut calldata = const_selector("getContracts(uint32,uint32)").to_vec();
+        calldata.extend_from_slice(&encode(&(0u32, 10u32)));
+        let data = route_calldata(&mut contract, &calldata);
+
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&word_u32(0x20)); // offset of the single tuple output
+        expected.extend_from_slice(&word_u32(0)); // total
+        expected.extend_from_slice(&word_u32(0x40)); // offset of `entries` within the tuple
+        expected.extend_from_slice(&word_u32(0)); // empty entries array
+        assert_eq!(data, expected);
     }
 
     #[test]

@@ -48,7 +48,7 @@ jobs:
             # default target to PolkaVM, so an explicit host target is required.
             - name: Run host-side tests
               run: |
-                  cargo test -p cdm-macros -p pvm-cdm -p pvm-cdm-macros --target "$(rustc -vV | sed -n 's/^host: //p')"
+                  cargo test -p cdm-macros -p pvm-cdm -p pvm-cdm-macros -p contract-registry-core -p contract-registry -p contract-registry-proxy -p create3-factory -p create3-child --target "$(rustc -vV | sed -n 's/^host: //p')"
 
     templates:
         name: Templates
@@ -87,10 +87,11 @@ jobs:
                   path: |
                       ~/.cargo/registry
                       ~/.cargo/git
+                      target
                       src/lib/cdm/import-test/target
                       src/templates/shared-counter/target
                       src/templates/instagram/target
-                  key: templates-cargo-${{ runner.os }}-${{ steps.pvm-rev.outputs.rev }}-${{ hashFiles('src/templates/**/Cargo.toml', 'src/lib/cdm/**/Cargo.toml') }}
+                  key: templates-cargo-${{ runner.os }}-${{ steps.pvm-rev.outputs.rev }}-${{ hashFiles('src/templates/**/Cargo.toml', 'src/lib/cdm/**/Cargo.toml', 'src/contract/**/Cargo.toml') }}
                   restore-keys: |
                       templates-cargo-${{ runner.os }}-${{ steps.pvm-rev.outputs.rev }}-
                       templates-cargo-${{ runner.os }}-
@@ -112,3 +113,10 @@ jobs:
               run: pnpm test:macro
             - name: Build template contracts
               run: pnpm build:template
+            # Build the registry contracts and prove the embedded TS ABI
+            # matches the generated one — the drift test self-skips when the
+            # artifacts are missing, so it only has teeth right here.
+            - name: Build registry contracts
+              run: pnpm build:registry
+            - name: Check embedded registry ABI against generated ABI
+              run: pnpm vitest run src/lib/contracts/tests/registry-abi-sync.test.ts

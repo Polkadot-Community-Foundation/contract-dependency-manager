@@ -17,10 +17,12 @@ import {
     ContractDeployer,
     CONTRACTS_REGISTRY_CRATE,
     CONTRACTS_REGISTRY_PROXY_CRATE,
+    CREATE3_FACTORY_ABI,
     predictRegistryDeploy,
     deployRegistryWithProxy,
     resolveFeatures,
 } from "@parity/cdm-builder";
+import { createContractFromClient } from "@parity/product-sdk-contracts";
 import type { HexString } from "polkadot-api";
 import { ensureAccountMapped } from "../lib/account-mapping";
 import { runDeployWithUI, spinner } from "../lib/ui";
@@ -239,31 +241,47 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
         process.exit(1);
     }
 
-    // Phase 1 preflight: deploy ContractRegistry only if this signer/bytecode
+    // Phase 1 preflight: deploy ContractRegistry only if this signer
     // produces the registry (proxy) address selected for this network/target.
+    // The registry address is CREATE3-derived — a pure function of the
+    // factory address and the registry salt, independent of any bytecode.
     const registryAddress = resolveRegistryAddress(opts);
-    const expectedRegistry = await predictRegistryDeploy(deployer, implPvmPath, proxyPvmPath);
-    if (expectedRegistry.proxy.address.toLowerCase() !== registryAddress.toLowerCase()) {
+    const expectedRegistry = predictRegistryDeploy(deployer, rootDir, implPvmPath);
+    if (expectedRegistry.registryAddress.toLowerCase() !== registryAddress.toLowerCase()) {
         console.error(
-            `ERROR: ContractRegistry bootstrap would deploy ${expectedRegistry.proxy.address}, but the selected target uses ${registryAddress}.`,
+            `ERROR: ContractRegistry bootstrap would deploy ${expectedRegistry.registryAddress}, but the selected target uses ${registryAddress}.`,
         );
         console.error(
-            "Use the matching deployer/bytecode for this target, or pass --registry-address for a separate registry target.",
+            "Use the matching deployer for this target, or pass --registry-address for a separate registry target.",
         );
         chainClient.destroy();
         process.exit(1);
     }
 
-    // Phase 1: Deploy ContractRegistry — implementation blob, then the
-    // EIP-1967 proxy pointing at it (CREATE2 for deterministic addresses).
-    // The proxy address is the registry address everything else uses.
-    console.log("Deploying ContractRegistry (implementation + proxy)...");
-    const { implAddress, proxyAddress: registryAddr } = await deployRegistryWithProxy(
-        deployer,
+    // Phase 1: Deploy ContractRegistry — CREATE3 factory bootstrap (if this
+    // network lacks it), the implementation blob (plain CREATE2), then the
+    // EIP-1967 proxy THROUGH the factory. The proxy address is the registry
+    // address everything else uses.
+    console.log("Deploying ContractRegistry (CREATE3 factory + implementation + proxy)...");
+    const {
+        factoryAddress,
+        implAddress,
+        proxyAddress: registryAddr,
+    } = await deployRegistryWithProxy(deployer, {
+        rootDir,
         implPvmPath,
         proxyPvmPath,
-        expectedRegistry,
-    );
+        factoryContract: (address) =>
+            createContractFromClient(
+                chainClient.raw.assetHub,
+                chainClient.descriptors.assetHub,
+                address as HexString,
+                CREATE3_FACTORY_ABI,
+                { defaultSigner: signer, defaultOrigin: origin },
+            ),
+        prediction: expectedRegistry,
+    });
+    console.log(`  CREATE3 factory: ${factoryAddress}`);
     console.log(`  ContractRegistry implementation: ${implAddress}`);
     console.log(`  ContractRegistry (proxy): ${registryAddr}\n`);
     opts.registryAddress = registryAddr;

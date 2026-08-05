@@ -139,17 +139,20 @@ async function ensureRegistryBuilt(): Promise<void> {
 }
 
 export interface DeployedRegistry {
-    /** The stable registry address — the EIP-1967 proxy. */
+    /** The stable registry address — the EIP-1967 proxy, CREATE3-derived. */
     address: HexString;
     /** The implementation blob the proxy delegates to. */
     implAddress: HexString;
+    /** The CREATE3 factory the proxy was deployed through. */
+    factoryAddress: HexString;
 }
 
 /**
- * Build the registry blobs (if needed) and deploy them via CREATE2 against
- * `wsUrl` — implementation first, then the proxy pointing at it. Returns the
- * proxy address (the registry address consumers use) plus the implementation
- * address.
+ * Build the registry blobs (if needed) and deploy them against `wsUrl` —
+ * CREATE3 factory bootstrap first (frozen artifacts), then the
+ * implementation blob (plain CREATE2), then the proxy THROUGH the factory.
+ * Returns the proxy address (the registry address consumers use) plus the
+ * implementation and factory addresses.
  *
  * Spawns `bun run src/lib/scripts/deploy-registry.ts`. See the import-site
  * note above for why we don't invoke `ContractDeployer` directly under Node.
@@ -173,5 +176,15 @@ export async function deployRegistry(wsUrl: string): Promise<DeployedRegistry> {
             `Could not parse registry implementation address from deploy-registry.ts output:\n${stdout}`,
         );
     }
-    return { address: match[1] as HexString, implAddress: implMatch[1] as HexString };
+    const factoryMatch = stdout.match(/^CREATE3_FACTORY_ADDR=(0x[a-fA-F0-9]+)/m);
+    if (!factoryMatch) {
+        throw new Error(
+            `Could not parse CREATE3 factory address from deploy-registry.ts output:\n${stdout}`,
+        );
+    }
+    return {
+        address: match[1] as HexString,
+        implAddress: implMatch[1] as HexString,
+        factoryAddress: factoryMatch[1] as HexString,
+    };
 }

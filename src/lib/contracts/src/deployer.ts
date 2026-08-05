@@ -10,6 +10,7 @@ import {
     type SubmittableTransaction,
 } from "@parity/product-sdk-tx";
 import type { Contract, ContractDef } from "@parity/product-sdk-contracts";
+import { keccakCodeHash, predictCreate3Address } from "./create3";
 
 /**
  * Registry version index used to make CREATE2 salts unique across publishes
@@ -52,6 +53,49 @@ export function computeDeploySalt(
 export interface WeightLike {
     ref_time: bigint;
     proof_size: bigint;
+}
+
+/** Revert info shape carried by product-sdk contract errors and query values. */
+interface DecodedRevertCarrier {
+    reason?: unknown;
+    decoded?: { errorName?: unknown; args?: readonly unknown[] };
+    cause?: unknown;
+}
+
+/**
+ * Extract a typed-error signature (`Unauthorized()`, `ContractFrozen()`, …)
+ * from a product-sdk contract error or revert-info value, walking the `cause`
+ * chain. Registry rejections are custom SolErrors: product-sdk decodes them
+ * into `decoded.errorName` while `reason` stays empty, so error messages that
+ * only relay `reason` would say nothing.
+ */
+export function decodedErrorSignature(err: unknown): string | undefined {
+    let current: unknown = err;
+    for (let depth = 0; current && typeof current === "object" && depth < 8; depth++) {
+        const carrier = current as DecodedRevertCarrier;
+        const errorName = carrier.decoded?.errorName;
+        if (typeof errorName === "string" && errorName.length > 0) {
+            const args = (carrier.decoded?.args ?? [])
+                .map((arg) => (typeof arg === "string" ? JSON.stringify(arg) : String(arg)))
+                .join(", ");
+            return `${errorName}(${args})`;
+        }
+        current = carrier.cause;
+    }
+    return undefined;
+}
+
+/**
+ * `error.message`, with the decoded typed-error signature appended when the
+ * message does not already carry it.
+ */
+export function describeContractError(err: unknown): string {
+    const message = err instanceof Error ? err.message : String(err);
+    const signature = decodedErrorSignature(err);
+    if (signature && !message.includes(signature.slice(0, signature.indexOf("(")))) {
+        return `${message} [${signature}]`;
+    }
+    return message;
 }
 
 /**
@@ -209,16 +253,20 @@ export class ContractDeployer {
      * `constructorData` (ABI-encoded constructor arguments, no selector) is
      * appended to the instantiate payload for contracts whose constructor
      * takes arguments.
+     *
+     * `pvm` is either a filesystem path to a `.polkavm` blob or the blob
+     * bytes themselves (used for the frozen CREATE3 artifacts, whose bytes
+     * are hash-verified before ever hitting the chain).
      */
     async deploy(
-        pvmPath: string,
+        pvm: string | Uint8Array,
         cdmPackage?: string,
         saltVersion?: DeploySaltVersion,
         saltScope?: string,
         constructorData?: Uint8Array,
     ): Promise<{ address: string; txHash: string; blockHash: string }> {
         const { tx } = await this.dryRunDeploy(
-            pvmPath,
+            pvm,
             cdmPackage,
             saltVersion,
             saltScope,
@@ -229,7 +277,9 @@ export class ContractDeployer {
             waitFor: "best-block",
         });
         if (!result.ok) {
-            throw new Error(`[AssetHub deploy] ${result.error.message}`, { cause: result.error });
+            throw new Error(`[AssetHub deploy] ${describeContractError(result.error)}`, {
+                cause: result.error,
+            });
         }
 
         const instantiated = this.api.event.Revive.Instantiated.filter(
@@ -258,13 +308,13 @@ export class ContractDeployer {
      * to perform purely to recover the CREATE2 address.
      */
     async dryRunDeploy(
-        pvmPath: string,
+        pvm: string | Uint8Array,
         cdmPackage?: string,
         saltVersion?: DeploySaltVersion,
         saltScope?: string,
         constructorData?: Uint8Array,
     ) {
-        const code = new Uint8Array(readFileSync(pvmPath));
+        const code = typeof pvm === "string" ? new Uint8Array(readFileSync(pvm)) : pvm;
         const data = constructorData ?? new Uint8Array(0);
         const salt = cdmPackage ? computeDeploySalt(cdmPackage, saltVersion, saltScope) : undefined;
         const dryRun = await this.api.apis.ReviveApi.instantiate(
@@ -337,6 +387,123 @@ export class ContractDeployer {
         } catch {
             return null;
         }
+    }
+
+    /**
+     * Upload a code blob via `Revive.upload_code` WITHOUT instantiating it —
+     * required before anything can be deployed by code hash (the CREATE3
+     * factory instantiates its child, and any target it deploys, from
+     * pre-uploaded code).
+     *
+     * Idempotent: if the code hash already exists on-chain
+     * (`Revive.PristineCode`), returns immediately without submitting. If the
+     * submission itself fails, the storage is re-checked once so losing an
+     * upload race to another party still counts as success.
+     */
+    async uploadCode(
+        code: Uint8Array,
+    ): Promise<{ codeHash: SizedHex<32>; alreadyUploaded: boolean }> {
+        const codeHash = keccakCodeHash(code) as SizedHex<32>;
+        if (await this.api.query.Revive.PristineCode.getValue(codeHash)) {
+            return { codeHash, alreadyUploaded: true };
+        }
+
+        // Dry-run for the exact deposit (plus the usual 20% headroom) and as
+        // a cross-check that the runtime derives the same code hash we did.
+        const dryRun = await this.api.apis.ReviveApi.upload_code(this.origin, code, undefined, {
+            at: "best",
+        });
+        if (!dryRun.success) {
+            throw new Error(
+                `[AssetHub upload_code] Dry-run failed: ${stringifyBigInt(dryRun.value)}`,
+            );
+        }
+        if (dryRun.value.code_hash.toLowerCase() !== codeHash.toLowerCase()) {
+            throw new Error(
+                `[AssetHub upload_code] Code hash mismatch: locally computed ${codeHash}, runtime says ${dryRun.value.code_hash}`,
+            );
+        }
+        const storageDepositLimit = (dryRun.value.deposit * 120n) / 100n;
+
+        const tx = this.api.tx.Revive.upload_code({
+            code,
+            storage_deposit_limit: storageDepositLimit,
+        });
+        const result = await submitAndWatch(tx as unknown as SubmittableTransaction, this.signer, {
+            waitFor: "best-block",
+        });
+        if (!result.ok) {
+            // Somebody else may have uploaded the same blob between our
+            // pre-check and the submission — that still means "uploaded".
+            if (await this.api.query.Revive.PristineCode.getValue(codeHash)) {
+                return { codeHash, alreadyUploaded: true };
+            }
+            throw new Error(`[AssetHub upload_code] ${describeContractError(result.error)}`, {
+                cause: result.error,
+            });
+        }
+        return { codeHash, alreadyUploaded: false };
+    }
+
+    /**
+     * Deploy pre-uploaded code through the CREATE3 factory:
+     * `factory.deploy(salt, codeHash, constructorData)` lands the contract at
+     * `predictCreate3Address(factoryAddress, salt)` — an address that commits
+     * to NEITHER the code nor the constructor input.
+     *
+     * The blob behind `codeHash` must already be on-chain (see
+     * {@link uploadCode}). The returned address comes from a dry-run of the
+     * factory call and is cross-checked against the offline prediction before
+     * anything is submitted; a mismatch throws.
+     *
+     * @param factory - product-sdk handle for the factory (any origin/signer
+     *   defaults it carries are overridden with this deployer's).
+     * @param factoryAddress - the factory's address, for the offline prediction.
+     */
+    async deployViaCreate3Factory(
+        factory: Contract<ContractDef>,
+        factoryAddress: string,
+        salt: SizedHex<32>,
+        codeHash: SizedHex<32>,
+        constructorData?: Uint8Array,
+    ): Promise<{ address: string; txHash: string; blockHash: string }> {
+        const expected = predictCreate3Address(factoryAddress, salt);
+        const input = Binary.toHex(constructorData ?? new Uint8Array(0));
+
+        // The factory's `deploy` returns the target address; extract it via a
+        // dry-run so a revert (spent salt, missing code hash, target
+        // constructor failure) surfaces before submission.
+        const dryRun = await factory.deploy.query(salt, codeHash, input, { origin: this.origin });
+        if (!dryRun.success) {
+            const signature = decodedErrorSignature(dryRun.value);
+            throw new Error(
+                `[CREATE3 deploy] Factory dry-run failed: ${signature ?? stringifyBigInt(dryRun.value)}`,
+            );
+        }
+        const returned = String(dryRun.value);
+        if (returned.toLowerCase() !== expected.toLowerCase()) {
+            throw new Error(
+                `[CREATE3 deploy] Address mismatch: factory returned ${returned}, offline prediction says ${expected}`,
+            );
+        }
+
+        const result = await factory.deploy.tx(salt, codeHash, input, {
+            signer: this.signer,
+            origin: this.origin,
+            gasLimit: { ref_time: GAS_LIMIT.refTime, proof_size: GAS_LIMIT.proofSize },
+            storageDepositLimit: STORAGE_DEPOSIT_LIMIT,
+            waitFor: "best-block",
+        });
+        if (!result.ok) {
+            throw new Error(`[CREATE3 deploy] ${describeContractError(result.error)}`, {
+                cause: result.error,
+            });
+        }
+        return {
+            address: expected,
+            txHash: result.value.txHash,
+            blockHash: result.value.block.hash,
+        };
     }
 
     /**
@@ -465,9 +632,10 @@ export class ContractDeployer {
                     { mode: "batch_all", waitFor: "best-block" },
                 );
                 if (!result.ok) {
-                    throw new Error(`${label} Batch deploy failed: ${result.error.message}`, {
-                        cause: result.error,
-                    });
+                    throw new Error(
+                        `${label} Batch deploy failed: ${describeContractError(result.error)}`,
+                        { cause: result.error },
+                    );
                 }
                 const instantiated = this.api.event.Revive.Instantiated.filter(
                     result.value.events as Parameters<
@@ -594,7 +762,7 @@ export class ContractDeployer {
         const registerCalls = preparedRegisterCalls.map((r, i) => {
             if (!r.ok) {
                 throw new Error(
-                    `[AssetHub deploy+register] Failed to prepare publishLatest for ${cdmPackages[i]}: ${r.error.message}`,
+                    `[AssetHub deploy+register] Failed to prepare publishLatest for ${cdmPackages[i]}: ${describeContractError(r.error)}`,
                     { cause: r.error },
                 );
             }
@@ -618,9 +786,10 @@ export class ContractDeployer {
                 waitFor: "best-block",
             });
             if (!result.ok) {
-                throw new Error(`${label} Batch deploy+register failed: ${result.error.message}`, {
-                    cause: result.error,
-                });
+                throw new Error(
+                    `${label} Batch deploy+register failed: ${describeContractError(result.error)}`,
+                    { cause: result.error },
+                );
             }
 
             // Verify on-chain Instantiated events match our precomputed
@@ -702,6 +871,45 @@ if (import.meta.vitest) {
             expect(
                 computeDeploySalt("@cdm/example", 0, "0x2222222222222222222222222222222222222222"),
             ).toBe(v0NewRegistry);
+        });
+    });
+
+    describe("describeContractError", () => {
+        test("appends the decoded typed-error signature when the message lacks it", () => {
+            const err = Object.assign(
+                new Error(
+                    'Contract reverted in "publishLatest": 0x8e4a23d6. The transaction was not submitted.',
+                ),
+                {
+                    decoded: { errorName: "Unauthorized", args: [] },
+                },
+            );
+            expect(describeContractError(err)).toBe(
+                'Contract reverted in "publishLatest": 0x8e4a23d6. The transaction was not submitted. [Unauthorized()]',
+            );
+        });
+
+        test("does not duplicate a signature the message already carries", () => {
+            const err = Object.assign(new Error("reverted: Unauthorized()"), {
+                decoded: { errorName: "Unauthorized", args: [] },
+            });
+            expect(describeContractError(err)).toBe("reverted: Unauthorized()");
+        });
+
+        test("finds the signature on the cause chain and stringifies args", () => {
+            const cause = Object.assign(new Error("inner"), {
+                decoded: { errorName: "BadImplementation", args: ["0xabc", 3n] },
+            });
+            const err = new Error("outer failure", { cause });
+            expect(describeContractError(err)).toBe(
+                'outer failure [BadImplementation("0xabc", 3)]',
+            );
+        });
+
+        test("passes plain errors through unchanged", () => {
+            expect(describeContractError(new Error("connection refused"))).toBe(
+                "connection refused",
+            );
         });
     });
 

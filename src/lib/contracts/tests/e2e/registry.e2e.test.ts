@@ -1,9 +1,10 @@
 // End-to-end registry validation against a live `revive-dev-node`.
 //
 // The suite spawns a fresh node + deploys the registry once (`beforeAll`) —
-// the harness shells out to `deploy-registry.ts`, which performs the two-step
-// deploy (implementation blob, then the EIP-1967 proxy pointing at it) and
-// hands back the proxy address. All calls below go through the proxy with
+// the harness shells out to `deploy-registry.ts`, which bootstraps the
+// CREATE3 factory, deploys the implementation blob, deploys the EIP-1967
+// proxy through the factory, and hands back the proxy address. All calls
+// below go through the proxy with
 // the implementation's ABI, via the same code path CDM's TS pipeline uses
 // (`createContractFromClient` + the embedded `CONTRACTS_REGISTRY_ABI`).
 // Each assertion is its own `test()` for granular failure attribution.
@@ -13,7 +14,7 @@
 
 import { describe, test, expect, beforeAll, afterAll } from "vitest";
 import type { HexString } from "polkadot-api";
-import { createCdmAssetHubClient, prepareSigner, type CdmChainClient } from "@parity/cdm-env";
+import { createCdmAssetHubClient, prepareSigner, type CdmAssetHubClient } from "@parity/cdm-env";
 import { ALICE_SS58 } from "@parity/cdm-utils";
 // Subpath `@parity/cdm-builder/abi` rather than the package root: vitest's
 // Vite resolver tree-shakes the package's `dist/index.js` (re-exports +
@@ -29,7 +30,7 @@ const ADDR = "0x1111111111111111111111111111111111111111" as HexString;
 const URI = "ipfs://bafy2bzaceblahblahQmExampleLongCidExercisingSpilledChunks";
 
 let node: NodeHandle;
-let chainClient: CdmChainClient;
+let chainClient: CdmAssetHubClient;
 // The implementation blob's address — the proxy delegates every call to it.
 let implAddress: string;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -239,7 +240,10 @@ describe("registry upgrade + admin surface", () => {
         // The Upgraded event surfaces as a Revive.ContractEmitted record in
         // the raw event list; a shape-agnostic containment check keeps this
         // resilient to papi event envelope changes.
-        expect(JSON.stringify(r.value.events)).toContain("ContractEmitted");
+        const eventsJson = JSON.stringify(r.value.events, (_key, value) =>
+            typeof value === "bigint" ? value.toString() : value,
+        );
+        expect(eventsJson).toContain("ContractEmitted");
 
         const code = await registry.getCode.query();
         expect(lc(code.value)).toBe(lc(implAddress));

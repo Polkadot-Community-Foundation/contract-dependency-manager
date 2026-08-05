@@ -19,6 +19,54 @@ pub struct ContractEntry {
     pub owner: Address,
 }
 
+// The old SDK encoded every multi-value return as ONE tuple output; the new
+// SDK flattens bare Rust tuples into N outputs, which changes the wire bytes
+// for dynamic returns (an extra leading offset word). The structs below
+// reproduce the old single-tuple format exactly, so one ABI decodes every
+// registry generation ever deployed. Do not replace them with bare tuples.
+
+/// `Option<Address>` in the registry's historical wire format:
+/// a single `(bool isSome, address value)` tuple output.
+#[derive(Debug, PartialEq, Eq, SolType)]
+pub struct OptionalAddress {
+    pub is_some: bool,
+    pub value: Address,
+}
+
+impl From<Option<Address>> for OptionalAddress {
+    fn from(value: Option<Address>) -> Self {
+        Self {
+            is_some: value.is_some(),
+            value: value.unwrap_or(Address::ZERO),
+        }
+    }
+}
+
+/// `Option<String>` in the registry's historical wire format:
+/// a single `(bool isSome, string value)` tuple output.
+#[derive(Debug, PartialEq, Eq, SolType)]
+pub struct OptionalString {
+    pub is_some: bool,
+    pub value: String,
+}
+
+impl From<Option<String>> for OptionalString {
+    fn from(value: Option<String>) -> Self {
+        Self {
+            is_some: value.is_some(),
+            value: value.unwrap_or_default(),
+        }
+    }
+}
+
+/// `getContracts` page in the historical wire format: a single
+/// `(uint32 total, ContractEntry[] entries)` tuple output.
+#[derive(Debug, PartialEq, Eq, SolType)]
+pub struct ContractPage {
+    pub total: u32,
+    pub entries: Vec<ContractEntry>,
+}
+
 /// One version of a contract in an `adminImportContracts` payload.
 #[derive(Debug, PartialEq, Eq, SolType)]
 pub struct ImportContractVersion {
@@ -72,6 +120,10 @@ pub struct ImportContractExists;
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub struct VersionOverflow;
 
+/// `setCode` target has no code on-chain.
+#[derive(Debug, PartialEq, Eq, SolError)]
+pub struct BadImplementation;
+
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub enum Error {
     Unauthorized(Unauthorized),
@@ -83,6 +135,7 @@ pub enum Error {
     ImportVersionsEmpty(ImportVersionsEmpty),
     ImportContractExists(ImportContractExists),
     VersionOverflow(VersionOverflow),
+    BadImplementation(BadImplementation),
 }
 
 impl From<NameError> for Error {

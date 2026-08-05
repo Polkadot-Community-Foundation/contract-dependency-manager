@@ -6,6 +6,7 @@ export {
     CONTRACTS_REGISTRY_PROXY_CRATE,
     CONTRACTS_REGISTRY_PACKAGE,
     CONTRACTS_REGISTRY_IMPL_PACKAGE,
+    CREATE3_FACTORY_PACKAGE,
     DEFAULT_NODE_URL,
 } from "./constants";
 export { stringifyBigInt } from "./utils";

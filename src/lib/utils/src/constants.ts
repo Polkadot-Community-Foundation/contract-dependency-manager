@@ -13,10 +13,19 @@ export const CONTRACTS_REGISTRY_CRATE = "contract-registry";
 // holds the stable registry address; all calls delegate to the implementation.
 export const CONTRACTS_REGISTRY_PROXY_CRATE = "contract-registry-proxy";
 
-// CREATE2 salt material for the ContractRegistry PROXY deployment — this is
-// the stable address every consumer uses. Bump the suffix when deliberately
-// deploying a new registry generation.
+// Salt material for the ContractRegistry PROXY deployment — this is the
+// stable address every consumer uses. The proxy is deployed THROUGH the
+// CREATE3 factory, so its address is a pure function of (factory, this salt)
+// — no bytecode or constructor input involved. Bump the suffix when
+// deliberately deploying a new registry generation.
 export const CONTRACTS_REGISTRY_PACKAGE = "@cdm/registry.2";
+
+// CREATE2 salt material for the CREATE3 factory itself — deployed once per
+// network from the operator's EOA using the committed factory blob, so the
+// factory (and therefore every CREATE3 address it derives) is identical
+// across networks for the same deployer. Bumping this constant moves the
+// factory AND every future CREATE3 address — never do it casually.
+export const CREATE3_FACTORY_PACKAGE = "@cdm/create3-factory.1";
 
 // CREATE2 salt material for the registry IMPLEMENTATION blob the proxy
 // delegates to. Bump independently when shipping a new implementation build

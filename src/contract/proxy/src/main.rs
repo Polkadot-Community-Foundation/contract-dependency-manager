@@ -30,12 +30,15 @@ mod registry_proxy {
     }
 
     impl RegistryProxy {
+        /// `admin` is an explicit argument, NOT `caller()`: deployed through
+        /// the CREATE3 factory, this constructor's caller is the single-use
+        /// child deployer — pinning admin to it would lock the registry's
+        /// admin surface to a dead contract forever. CREATE3 addresses don't
+        /// commit to constructor input, so passing the admin is free.
         #[pvm_contract_sdk::constructor]
-        pub fn new(&mut self, implementation: Address) {
-            let mut deployer = [0u8; 20];
-            self.host().caller(&mut deployer);
+        pub fn new(&mut self, implementation: Address, admin: Address) {
             self.implementation.set(&implementation);
-            self.admin.set(&Address(deployer));
+            self.admin.set(&admin);
         }
 
         /// Forward any call — the proxy declares no methods, so every
@@ -102,7 +105,7 @@ mod tests {
             .calldata(calldata)
             .build();
         let mut proxy = RegistryProxy::with_host(mock.clone());
-        proxy.new(Address(IMPL));
+        proxy.new(Address(IMPL), Address(DEPLOYER));
         (proxy, mock)
     }
 

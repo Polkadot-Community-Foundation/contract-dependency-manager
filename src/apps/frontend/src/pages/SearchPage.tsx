@@ -15,7 +15,14 @@ export default function SearchPage() {
     const [inputValue, setInputValue] = useState(query);
     const navigate = useNavigate();
     const { networkConfig, connecting, error: networkError } = useNetwork();
-    const { packages, loading, error: registryError, hasMore, loadMore } = useRegistrySearch(query);
+    const {
+        packages,
+        loading,
+        searching,
+        error: registryError,
+        hasMore,
+        loadMore,
+    } = useRegistrySearch(query);
 
     const error = networkError || registryError;
 
@@ -78,7 +85,7 @@ export default function SearchPage() {
                         </p>
                         <p>{error}</p>
                     </div>
-                ) : connecting || (loading && packages.length === 0) ? (
+                ) : connecting || (searching && packages.length === 0) ? (
                     <div className="search-results-list">
                         {Array.from({ length: 6 }).map((_, i) => (
                             // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length decorative array

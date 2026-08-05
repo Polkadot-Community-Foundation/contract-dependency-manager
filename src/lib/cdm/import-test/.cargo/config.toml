@@ -1,2 +1,0 @@
-[env]
-PVM_ENTRY_POINT_CRATE = { value = "cdm-import-test", force = true }
