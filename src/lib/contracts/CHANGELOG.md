@@ -1,5 +1,42 @@
 # @dotdm/contracts
 
+## 5.0.0
+
+### Major Changes
+
+- e67c5c7: Registry longevity: rewrite the ContractRegistry on mainline cargo-pvm-contract behind an EIP-1967 proxy with `setCode` upgrades and `freeze`/`unfreeze`, drop on-chain prefix search, and deploy the proxy through a new CREATE3 factory (new `@cdm/registry.2` generation): the registry address is now a pure function of (factory, salt) — independent of bytecode and constructor input, stable across rebuilds and identical on every network bootstrapped by the same account.
+
+  Breaking for `@parity/cdm-builder`: `searchContractNames` is removed from the exported `CONTRACTS_REGISTRY_ABI`, and the registry now sits behind an EIP-1967 proxy with `setCode`/`freeze` admin entry points. Wire compatibility with already-deployed old-generation registries is preserved — multi-value returns keep the historical single-tuple encoding — so existing CLIs keep working.
+
+### Patch Changes
+
+- Updated dependencies [f373a8e]
+- Updated dependencies [e67c5c7]
+  - @parity/cdm-env@2.3.0
+  - @parity/cdm-utils@0.5.0
+
+## 4.0.0
+
+### Major Changes
+
+- 8654118: Breaking: `pvmContractBuild`/`pvmContractBuildAsync` and `buildContracts` now require an explicit `registryAddress` — omitting it no longer silently embeds the paseo registry. Also: registry query errors are only classified as "contract not found" for viem zero-data decode errors (with the original error attached as `cause`), the deploy pipeline dry-runs each contract once via `planDeploy` instead of twice (address precompute errors now propagate instead of being swallowed), and `--contracts` filtering matches Rust contracts by CDM package name and display name like Solidity targets.
+
+### Patch Changes
+
+- Updated dependencies [8654118]
+  - @parity/cdm-env@2.2.0
+
+## 3.2.0
+
+### Minor Changes
+
+- ad53253: Add a `devnet` chain preset for the Paseo testnet Asset Hub (EVM chain id 420420417) wired to the community-operated ContractRegistry at `0x59b0245778917af55224e5f8fb55f7f8d452619f`, using the dedicated devnet descriptors and Bulletin RPC introduced in product-sdk 0.18.0, and clarify that the `paseo` preset targets the paseo-next preview network. Upgrades all `@parity/product-sdk-*` dependencies to the 0.18.0 release set and migrates to its `Result`-based error API (`submitAndWatch`, `batchSubmitAndWatch`, contract `.tx`/`.prepare`, `ensureContractAccountMapped`, cloud-storage `queryJson`).
+
+### Patch Changes
+
+- Updated dependencies [ad53253]
+  - @parity/cdm-env@2.1.0
+
 ## 3.1.9
 
 ### Patch Changes

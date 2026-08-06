@@ -1,5 +1,5 @@
 {
-  "registry": "0x7671a84f5e7b1bf704f0ad3f43a185ff3d4b303f",
+  "registry": "0xc1a73a4f93fde65b1cb1680baead248073566cb0",
   "dependencies": {
     "@example/counter": "latest",
     "@example/counter-writer": "latest",

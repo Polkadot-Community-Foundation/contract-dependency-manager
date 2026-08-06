@@ -80,10 +80,10 @@ describe("toolchain setup", () => {
     });
 
     test("cargo-pvm-contract step accepts a custom ref", () => {
-        const step = createToolSteps({ ref: "charles/cdm-integration" }).find(
+        const step = createToolSteps({ ref: "my/feature-branch" }).find(
             (entry) => entry.name === "cargo-pvm-contract",
         );
 
-        expect(step?.manualHint).toContain("charles/cdm-integration");
+        expect(step?.manualHint).toContain("my/feature-branch");
     });
 });
