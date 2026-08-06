@@ -22,7 +22,7 @@ const target = resolveMigrationTarget({
     registryAddress: opts["registry-address"],
 });
 
-await importRegistrySnapshot(
+const { imported, skipped } = await importRegistrySnapshot(
     snapshot,
     {
         name: opts.name,
@@ -36,4 +36,7 @@ await importRegistrySnapshot(
     },
 );
 
-console.log(`Imported ${snapshot.contracts.length} contracts into ${target.registryAddress}`);
+console.log(
+    `Imported ${imported} contracts into ${target.registryAddress}` +
+        (skipped > 0 ? ` (${skipped} already present)` : ""),
+);

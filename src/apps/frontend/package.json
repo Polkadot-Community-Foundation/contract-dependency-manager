@@ -6,6 +6,7 @@
     "scripts": {
         "dev": "vite",
         "build": "tsc -b && vite build",
+        "typecheck": "tsc -b",
         "lint": "eslint .",
         "preview": "vite preview",
         "clean": "rm -rf dist"
@@ -27,7 +28,6 @@
     },
     "devDependencies": {
         "@eslint/js": "catalog:",
-        "@types/dompurify": "catalog:",
         "@types/node": "catalog:",
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",

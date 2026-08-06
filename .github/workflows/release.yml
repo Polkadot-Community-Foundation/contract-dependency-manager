@@ -33,11 +33,14 @@ jobs:
             - name: Check for changesets
               id: changesets
               run: |
-                  if ls .changeset/*.md 2>/dev/null | grep -qv README.md; then
-                    echo "found=true" >> $GITHUB_OUTPUT
-                  else
-                    echo "found=false" >> $GITHUB_OUTPUT
-                  fi
+                  found=false
+                  for f in .changeset/*.md; do
+                    if [ -e "$f" ] && [ "${f##*/}" != "README.md" ]; then
+                      found=true
+                      break
+                    fi
+                  done
+                  echo "found=$found" >> "$GITHUB_OUTPUT"
 
             - if: steps.changesets.outputs.found == 'true'
               uses: oven-sh/setup-bun@v2
@@ -132,7 +135,7 @@ jobs:
             - name: Compile binaries
               if: steps.changesets.outputs.found == 'true'
               run: |
-                  make embed-templates
+                  pnpm embed:templates
                   bun build --compile --target=bun-linux-x64 src/apps/cli/src/cli.ts --outfile cdm-linux-x64
                   bun build --compile --target=bun-linux-arm64 src/apps/cli/src/cli.ts --outfile cdm-linux-arm64
                   bun build --compile --target=bun-darwin-x64 src/apps/cli/src/cli.ts --outfile cdm-darwin-x64
@@ -146,8 +149,8 @@ jobs:
                   # Use the @parity/cdm-cli version as the release tag
                   VERSION=$(node -p "require('./src/apps/cli/package.json').version")
                   TAG="v${VERSION}"
-                  echo "tag=$TAG" >> $GITHUB_OUTPUT
-                  echo "version=$VERSION" >> $GITHUB_OUTPUT
+                  echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+                  echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
             - name: Create Release
               if: steps.changesets.outputs.found == 'true'
@@ -212,7 +215,7 @@ jobs:
               run: |
                   pnpm install --frozen-lockfile
                   pnpm -r --filter "@parity/cdm-utils" --filter "@parity/cdm-env" --filter "@parity/cdm-builder" --filter "@parity/cdm-codegen" build
-                  make embed-templates
+                  pnpm embed:templates
                   for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
                     bun build --compile --target="bun-$target" src/apps/cli/src/cli.ts --outfile "cdm-$target"
                   done
