@@ -1,4 +1,4 @@
-export type ProductSdkEnvironment = "paseo" | "devnet" | "summit";
+export type ProductSdkEnvironment = "paseo" | "devnet";
 
 const POLKADOT_REGISTRY_ADDRESS = "";
 // New-generation registry (EIP-1967 proxy via the CREATE3 factory,
@@ -9,14 +9,12 @@ const PASEO_REGISTRY_ADDRESS = "0xc1a73a4f93fde65b1cb1680baead248073566cb0";
 // testnet Asset Hub (para 1000, EVM chain id 420420417) for its public
 // "products devnet". Community-owned, not deployed by this repo's tooling.
 const DEVNET_REGISTRY_ADDRESS = "0x59b0245778917af55224e5f8fb55f7f8d452619f";
-const W3S_REGISTRY_ADDRESS = "0xa5747e60ae27f93e92019e4021abfc4957050141";
 const LOCAL_REGISTRY_ADDRESS = "";
 
 const REGISTRY_ADDRESSES: Record<string, string> = {
     polkadot: POLKADOT_REGISTRY_ADDRESS,
     paseo: PASEO_REGISTRY_ADDRESS,
     devnet: DEVNET_REGISTRY_ADDRESS,
-    w3s: W3S_REGISTRY_ADDRESS,
     local: LOCAL_REGISTRY_ADDRESS,
 };
 
