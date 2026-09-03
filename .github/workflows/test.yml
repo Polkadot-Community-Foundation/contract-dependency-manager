@@ -66,15 +66,17 @@ jobs:
             - uses: dtolnay/rust-toolchain@nightly
               with:
                   components: rust-src
-            # cargo-pvm-contract is a floating git pin (branch = "main"), so
-            # resolve the current upstream revision up front and key every
-            # cache on it: any upstream change invalidates the installed
-            # binary and build caches together.
+            # The resolved revision keys every cache below, so the installed
+            # binary and the build caches invalidate together whenever it moves.
+            # PCF fork: pinned, not floating. Upstream `main` moved past
+            # dc2c857 and dropped `Mapping::view`/`view_mut`, which the
+            # registry contract still uses — a floating pin makes this job fail
+            # on upstream's schedule rather than on our changes. Keep this rev in
+            # step with the `pvm-contract-sdk` pin in Cargo.toml and the
+            # templates; bump both together, deliberately.
             - name: Resolve cargo-pvm-contract revision
               id: pvm-rev
-              run: |
-                  rev="$(git ls-remote https://github.com/paritytech/cargo-pvm-contract.git refs/heads/main | cut -f1)"
-                  echo "rev=${rev}" >> "$GITHUB_OUTPUT"
+              run: echo "rev=dc2c857c846ed4f534a9bbe4cc1a1a1319633b75" >> "$GITHUB_OUTPUT"
             - name: Cache cargo-pvm-contract binary
               id: cache-pvm-bin
               uses: actions/cache@v4
@@ -141,11 +143,15 @@ jobs:
             - uses: dtolnay/rust-toolchain@nightly
               with:
                   components: rust-src
+            # PCF fork: pinned, not floating. Upstream `main` moved past
+            # dc2c857 and dropped `Mapping::view`/`view_mut`, which the
+            # registry contract still uses — a floating pin makes this job fail
+            # on upstream's schedule rather than on our changes. Keep this rev in
+            # step with the `pvm-contract-sdk` pin in Cargo.toml and the
+            # templates; bump both together, deliberately.
             - name: Resolve cargo-pvm-contract revision
               id: pvm-rev
-              run: |
-                  rev="$(git ls-remote https://github.com/paritytech/cargo-pvm-contract.git refs/heads/main | cut -f1)"
-                  echo "rev=${rev}" >> "$GITHUB_OUTPUT"
+              run: echo "rev=dc2c857c846ed4f534a9bbe4cc1a1a1319633b75" >> "$GITHUB_OUTPUT"
             - name: Cache cargo-pvm-contract binary
               id: cache-pvm-bin
               uses: actions/cache@v4
