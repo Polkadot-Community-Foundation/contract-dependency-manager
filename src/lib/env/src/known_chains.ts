@@ -85,13 +85,6 @@ export const KNOWN_CHAINS = {
         productSdkEnvironment: "devnet",
         faucets: [{ label: "Asset Hub", url: "https://faucet.polkadot.io/?parachain=1000" }],
     },
-    w3s: {
-        assethubUrl: "wss://summit-asset-hub-rpc.polkadot.io",
-        bulletinUrl: "wss://summit-bulletin-rpc.polkadot.io",
-        ipfsGatewayUrl: "https://summit-ipfs.polkadot.io/ipfs",
-        registryAddress: getRegistryAddress("w3s"),
-        productSdkEnvironment: "summit",
-    },
     local: {
         assethubUrl: "ws://127.0.0.1:10020",
         bulletinUrl: "ws://127.0.0.1:10030",
