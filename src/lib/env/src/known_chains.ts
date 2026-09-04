@@ -134,7 +134,7 @@ if (import.meta.vitest) {
 
         expect(preset.assethubUrl).toBe("wss://asset-hub-paseo-rpc.n.dwellir.com");
         expect(preset.bulletinUrl).toBe("wss://bulletin-paseo.tservices.es:8443");
-        expect(preset.registryAddress).toBe("0x59b0245778917af55224e5f8fb55f7f8d452619f");
+        expect(preset.registryAddress).toBe("0x05662b3dbd5dd9f2ff92d67630477e84b0b37c1f");
         expect(preset.productSdkEnvironment).toBe("devnet");
     });
 
