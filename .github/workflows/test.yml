@@ -5,10 +5,11 @@ on:
         branches: [main]
     pull_request:
     schedule:
-        # The template contracts and the cdm::import! consumer track floating
-        # `branch = "main"` git pins (pvm-contract-sdk), so upstream can break
-        # them without any activity in this repo. A nightly run catches that
-        # drift the day it happens instead of on the next fresh `bootstrap`.
+        # `pvm-contract-sdk` is pinned by revision in this fork, but drift can
+        # still reach us from outside: the templates track floating
+        # `branch = "main"` pins on `cdm`/`pvm-cdm`, and the toolchain builds on
+        # whatever `rust-toolchain@nightly` resolves to that day. A nightly run
+        # catches that the day it happens, not on the next fresh `bootstrap`.
         - cron: "17 3 * * *"
 
 jobs:
@@ -109,6 +110,13 @@ jobs:
                   git -C "$tmp_dir" remote add origin https://github.com/paritytech/cargo-pvm-contract.git
                   git -C "$tmp_dir" fetch -q --depth 1 origin "${{ steps.pvm-rev.outputs.rev }}"
                   git -C "$tmp_dir" checkout -q FETCH_HEAD
+                  # trie-db 0.30.0, which cargo-pvm-contract's own Cargo.lock
+                  # pins, no longer compiles on current nightly: rust-lang/rust#148922
+                  # changed inference so collecting into `Result<!, _>` fails to
+                  # resolve. 0.30.1 is the upstream fix. Take that one patch and
+                  # leave every other dependency at its locked version, so
+                  # `--locked` below still holds.
+                  cargo update --manifest-path "$tmp_dir/Cargo.toml" -p trie-db --precise 0.30.1
                   host_target="$(rustc -vV | awk '/^host:/ { print $2 }')"
                   cargo install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
             - name: Compile cdm::import! consumer to PolkaVM
@@ -177,6 +185,13 @@ jobs:
                   git -C "$tmp_dir" remote add origin https://github.com/paritytech/cargo-pvm-contract.git
                   git -C "$tmp_dir" fetch -q --depth 1 origin "${{ steps.pvm-rev.outputs.rev }}"
                   git -C "$tmp_dir" checkout -q FETCH_HEAD
+                  # trie-db 0.30.0, which cargo-pvm-contract's own Cargo.lock
+                  # pins, no longer compiles on current nightly: rust-lang/rust#148922
+                  # changed inference so collecting into `Result<!, _>` fails to
+                  # resolve. 0.30.1 is the upstream fix. Take that one patch and
+                  # leave every other dependency at its locked version, so
+                  # `--locked` below still holds.
+                  cargo update --manifest-path "$tmp_dir/Cargo.toml" -p trie-db --precise 0.30.1
                   host_target="$(rustc -vV | awk '/^host:/ { print $2 }')"
                   cargo install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
             - name: Build registry contracts
