@@ -8,7 +8,13 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_DIR = resolve(__dirname, "../../../templates/shared-counter");
 
-describe("detection via cargo metadata", () => {
+// These shell out to a real `cargo metadata`, so the first one in a cold
+// checkout pays for fetching the template's git dependencies before it can
+// answer. That is comfortably over vitest's 5s default on CI runners, where
+// nothing is cached and `pvm-contract-sdk` is pinned by revision.
+const CARGO_METADATA_TIMEOUT_MS = 120_000;
+
+describe("detection via cargo metadata", { timeout: CARGO_METADATA_TIMEOUT_MS }, () => {
     test("detects all 3 contracts in shared-counter template", () => {
         const contracts = detectContracts(TEMPLATE_DIR);
         const names = contracts.map((c) => c.name).sort();

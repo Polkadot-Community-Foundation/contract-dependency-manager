@@ -5,10 +5,11 @@ on:
         branches: [main]
     pull_request:
     schedule:
-        # The template contracts and the cdm::import! consumer track floating
-        # `branch = "main"` git pins (pvm-contract-sdk), so upstream can break
-        # them without any activity in this repo. A nightly run catches that
-        # drift the day it happens instead of on the next fresh `bootstrap`.
+        # `pvm-contract-sdk` is pinned by revision in this fork, but drift can
+        # still reach us from outside: the templates track floating
+        # `branch = "main"` pins on `cdm`/`pvm-cdm`, and the toolchain builds on
+        # whatever `rust-toolchain@nightly` resolves to that day. A nightly run
+        # catches that the day it happens, not on the next fresh `bootstrap`.
         - cron: "17 3 * * *"
 
 jobs:
@@ -66,15 +67,17 @@ jobs:
             - uses: dtolnay/rust-toolchain@nightly
               with:
                   components: rust-src
-            # cargo-pvm-contract is a floating git pin (branch = "main"), so
-            # resolve the current upstream revision up front and key every
-            # cache on it: any upstream change invalidates the installed
-            # binary and build caches together.
+            # The resolved revision keys every cache below, so the installed
+            # binary and the build caches invalidate together whenever it moves.
+            # PCF fork: pinned, not floating. Upstream `main` moved past
+            # dc2c857 and dropped `Mapping::view`/`view_mut`, which the
+            # registry contract still uses — a floating pin makes this job fail
+            # on upstream's schedule rather than on our changes. Keep this rev in
+            # step with the `pvm-contract-sdk` pin in Cargo.toml and the
+            # templates; bump both together, deliberately.
             - name: Resolve cargo-pvm-contract revision
               id: pvm-rev
-              run: |
-                  rev="$(git ls-remote https://github.com/paritytech/cargo-pvm-contract.git refs/heads/main | cut -f1)"
-                  echo "rev=${rev}" >> "$GITHUB_OUTPUT"
+              run: echo "rev=dc2c857c846ed4f534a9bbe4cc1a1a1319633b75" >> "$GITHUB_OUTPUT"
             - name: Cache cargo-pvm-contract binary
               id: cache-pvm-bin
               uses: actions/cache@v4
@@ -107,6 +110,13 @@ jobs:
                   git -C "$tmp_dir" remote add origin https://github.com/paritytech/cargo-pvm-contract.git
                   git -C "$tmp_dir" fetch -q --depth 1 origin "${{ steps.pvm-rev.outputs.rev }}"
                   git -C "$tmp_dir" checkout -q FETCH_HEAD
+                  # trie-db 0.30.0, which cargo-pvm-contract's own Cargo.lock
+                  # pins, no longer compiles on current nightly: rust-lang/rust#148922
+                  # changed inference so collecting into `Result<!, _>` fails to
+                  # resolve. 0.30.1 is the upstream fix. Take that one patch and
+                  # leave every other dependency at its locked version, so
+                  # `--locked` below still holds.
+                  cargo update --manifest-path "$tmp_dir/Cargo.toml" -p trie-db --precise 0.30.1
                   host_target="$(rustc -vV | awk '/^host:/ { print $2 }')"
                   cargo install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
             - name: Compile cdm::import! consumer to PolkaVM
@@ -120,3 +130,112 @@ jobs:
               run: pnpm build:registry
             - name: Check embedded registry ABI against generated ABI
               run: pnpm vitest run src/lib/contracts/tests/registry-abi-sync.test.ts
+
+    e2e:
+        name: E2E
+        runs-on: ubuntu-latest
+        # Parity-only: this job checks out the private `paritytech/preview-net-v1`
+        # to boot an ephemeral PPN, using a `PPN_GITHUB_TOKEN` that exists only in
+        # the upstream repo. In a fork it can never pass — it fails at checkout —
+        # so skip it rather than leave a permanently red check that drowns out
+        # real signal. Runs unchanged upstream.
+        if: github.repository_owner == 'paritytech'
+        timeout-minutes: 30
+        steps:
+            - uses: actions/checkout@v4
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: "1.2.x"
+            - uses: pnpm/action-setup@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+            # Registry contracts build with build-std against the PolkaVM JSON
+            # target (see .cargo/config.toml), which needs nightly + rust-src.
+            - uses: dtolnay/rust-toolchain@nightly
+              with:
+                  components: rust-src
+            # PCF fork: pinned, not floating. Upstream `main` moved past
+            # dc2c857 and dropped `Mapping::view`/`view_mut`, which the
+            # registry contract still uses — a floating pin makes this job fail
+            # on upstream's schedule rather than on our changes. Keep this rev in
+            # step with the `pvm-contract-sdk` pin in Cargo.toml and the
+            # templates; bump both together, deliberately.
+            - name: Resolve cargo-pvm-contract revision
+              id: pvm-rev
+              run: echo "rev=dc2c857c846ed4f534a9bbe4cc1a1a1319633b75" >> "$GITHUB_OUTPUT"
+            - name: Cache cargo-pvm-contract binary
+              id: cache-pvm-bin
+              uses: actions/cache@v4
+              with:
+                  path: ~/.cargo/bin/cargo-pvm-contract
+                  key: cargo-pvm-contract-${{ runner.os }}-${{ steps.pvm-rev.outputs.rev }}
+            - name: Cache cargo dependencies and registry build artifacts
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      ~/.cargo/registry
+                      ~/.cargo/git
+                      target
+                  key: e2e-cargo-${{ runner.os }}-${{ steps.pvm-rev.outputs.rev }}-${{ hashFiles('src/contract/**/Cargo.toml') }}
+                  restore-keys: |
+                      e2e-cargo-${{ runner.os }}-
+                      templates-cargo-${{ runner.os }}-
+            - name: Install cargo-pvm-contract
+              if: steps.cache-pvm-bin.outputs.cache-hit != 'true'
+              run: |
+                  tmp_dir="$(mktemp -d)"
+                  git init -q "$tmp_dir"
+                  git -C "$tmp_dir" remote add origin https://github.com/paritytech/cargo-pvm-contract.git
+                  git -C "$tmp_dir" fetch -q --depth 1 origin "${{ steps.pvm-rev.outputs.rev }}"
+                  git -C "$tmp_dir" checkout -q FETCH_HEAD
+                  # trie-db 0.30.0, which cargo-pvm-contract's own Cargo.lock
+                  # pins, no longer compiles on current nightly: rust-lang/rust#148922
+                  # changed inference so collecting into `Result<!, _>` fails to
+                  # resolve. 0.30.1 is the upstream fix. Take that one patch and
+                  # leave every other dependency at its locked version, so
+                  # `--locked` below still holds.
+                  cargo update --manifest-path "$tmp_dir/Cargo.toml" -p trie-db --precise 0.30.1
+                  host_target="$(rustc -vV | awk '/^host:/ { print $2 }')"
+                  cargo install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
+            - name: Build registry contracts
+              run: pnpm build:registry
+            # The suite runs against a full local Polkadot product environment
+            # (PPN: relay + Asset Hub + Bulletin + IPFS gateway), started from
+            # prebuilt release binaries — nothing is compiled. preview-net-v1
+            # is a private repo, so its checkout and release downloads use the
+            # PPN_GITHUB_TOKEN secret (fine-grained PAT, contents:read on
+            # paritytech/preview-net-v1).
+            - name: Checkout preview-net-v1
+              uses: actions/checkout@v4
+              with:
+                  repository: paritytech/preview-net-v1
+                  token: ${{ secrets.PPN_GITHUB_TOKEN }}
+                  path: .ppn
+            - name: Start ephemeral PPN
+              env:
+                  GITHUB_TOKEN: ${{ secrets.PPN_GITHUB_TOKEN }}
+              run: |
+                  cd .ppn
+                  nohup make start EPHEMERAL=1 > ppn.log 2>&1 &
+                  echo "Waiting for Asset Hub (:10020) and Bulletin (:10030)..."
+                  # Warm-cache boots are ~20s; leave headroom for the first-run
+                  # binary downloads and slower CI disks. TCP-open is enough
+                  # here — the test harness re-probes actual RPC readiness.
+                  for i in $(seq 1 300); do
+                      if nc -z 127.0.0.1 10020 && nc -z 127.0.0.1 10030; then
+                          echo "PPN ready after ~${i}s"
+                          exit 0
+                      fi
+                      sleep 1
+                  done
+                  echo "PPN did not become ready; last log lines:" >&2
+                  tail -50 ppn.log >&2
+                  exit 1
+            - name: Run e2e suite
+              run: pnpm test:e2e
+            - name: PPN logs on failure
+              if: failure()
+              run: tail -100 .ppn/ppn.log || true
