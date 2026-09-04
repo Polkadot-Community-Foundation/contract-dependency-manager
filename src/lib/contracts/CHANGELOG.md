@@ -1,5 +1,12 @@
 # @dotdm/contracts
 
+## 5.0.2
+
+### Patch Changes
+
+- Updated dependencies [c99cf37]
+  - @parity/cdm-env@2.5.0
+
 ## 5.0.1
 
 ### Patch Changes
