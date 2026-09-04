@@ -134,6 +134,12 @@ jobs:
     e2e:
         name: E2E
         runs-on: ubuntu-latest
+        # Parity-only: this job checks out the private `paritytech/preview-net-v1`
+        # to boot an ephemeral PPN, using a `PPN_GITHUB_TOKEN` that exists only in
+        # the upstream repo. In a fork it can never pass — it fails at checkout —
+        # so skip it rather than leave a permanently red check that drowns out
+        # real signal. Runs unchanged upstream.
+        if: github.repository_owner == 'paritytech'
         timeout-minutes: 30
         steps:
             - uses: actions/checkout@v4
