@@ -37,6 +37,10 @@ const { values: opts } = parseArgs({
         name: { type: "string", short: "n", default: "devnet" },
         suri: { type: "string" },
         "read-as": { type: "string" },
+        "abi-dir": {
+            type: "string",
+            default: "/home/alemart/Projects/PCF/dotns/out/abis",
+        },
         "cdm-json": {
             type: "string",
             default: "/home/alemart/Projects/PCF/dotns-sdk/packages/ui/cdm.json",
@@ -49,23 +53,44 @@ const dryRun = !opts.execute;
 
 // Live devnet @dotns addresses (summit-net-deployments register).
 const DOTNS_DEVNET: Record<string, HexString> = {
-    "@dotns/registrar-controller": "0x77556F42DF5db7f89c2eCD00446041F16781011E",
-    "@dotns/registrar": "0x0E05e0E2576DDD1C339d360Aa634fE52CBa7Ee45",
-    "@dotns/registry": "0x38cf3dE5877a18157f4C1a4e067F84956F582b31",
-    "@dotns/pop-rules": "0xB991Bc0C5Ff4B4c7f3634bfC74e0E20F74D59554",
-    "@dotns/resolver": "0x57c10bc51bC59B93b6F2C165C62daFa92C34A8a9",
-    "@dotns/reverse-resolver": "0x992c7C87967897b0F9336de640d9f66A5af76f73",
-    "@dotns/content-resolver": "0x444578659848ba38D1825238f10B8D75522d278f",
-    "@dotns/store-factory": "0x59aAF46797A549455697B6f046B4dE16b92670fd",
-    "@dotns/multicall3": "0x55985d2Cfdac95DD828bd3Aa0e031602a07a9049",
+    "@dotns/registrar-controller": "0x59dcF8BfFFa7239243785C3fC336D8Bb22312e8c",
+    "@dotns/registrar": "0xc609e0c2DAB4433d55a32FB098Db8788C1956302",
+    "@dotns/registry": "0xb052E5EfC5ADEff1f21d48DEfb5169Cb394A1a73",
+    "@dotns/pop-rules": "0xD5Ee34610F06f7FF4668aB4fabE2393B65a43AE7",
+    "@dotns/resolver": "0xFcB74C073a2d14dc65B178Bb873f4dE51318DDC2",
+    "@dotns/reverse-resolver": "0x736e067290AE71f841399575ABfc8b2BAA5Eed7E",
+    "@dotns/content-resolver": "0x7e75491ecfb04900EB05ee63CABA2B33900aABB5",
+    "@dotns/store-factory": "0x5Df012daA06cA2602DA153309C2E3A83284Cb879",
+    "@dotns/multicall3": "0x92640655c5c7ee7E42F0B5aD68D205a8A767b81C",
+    "@dotns/protocol-registry": "0xdDF3D3838Ff056F15602fC5a65927f185679C36F",
+    "@dotns/pop-controller": "0xC3a3EdAb753F91488fD84E6134b5b0325dc22452",
+    "@dotns/pop-resolver": "0x398912c9bb03180Ff049f0E034FE2E0024fb8406",
+    "@dotns/name-escrow": "0xb50269322010DeeF2afb162c009Caf897971952C",
+};
+
+// Packages the dotns-sdk cdm.json does not carry: ABI read from a dotns release ABI directory
+// (dotns-abis-<tag>.zip unpacked, one <Contract>.json per contract).
+const RELEASE_ABI_FILES: Record<string, string> = {
+    "@dotns/protocol-registry": "DotnsProtocolRegistry.json",
+    "@dotns/pop-controller": "DotnsPopController.json",
+    "@dotns/pop-resolver": "DotnsPopResolver.json",
+    "@dotns/name-escrow": "DotnsNameEscrow.json",
 };
 
 const rawCdm = JSON.parse(readFileSync(opts["cdm-json"]!, "utf8"));
 const contractsBucket: Record<string, any> = Object.values(rawCdm.contracts ?? {})[0] ?? {};
 function abiFor(pkg: string): any[] {
-    const abi = contractsBucket[pkg]?.abi;
-    if (!Array.isArray(abi) || abi.length === 0)
-        throw new Error(`No ABI for ${pkg} in ${opts["cdm-json"]}`);
+    const file = RELEASE_ABI_FILES[pkg];
+    let abi = contractsBucket[pkg]?.abi;
+    if (file) {
+        const path = `${opts["abi-dir"]}/${file}`;
+        const release = JSON.parse(readFileSync(path, "utf8"));
+        abi = Array.isArray(release) ? release : release.abi;
+    }
+    if (!Array.isArray(abi) || abi.length === 0) {
+        const source = file ? opts["abi-dir"] : opts["cdm-json"];
+        throw new Error(`No ABI for ${pkg} in ${source}`);
+    }
     return abi;
 }
 
