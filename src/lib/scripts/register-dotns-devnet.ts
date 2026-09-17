@@ -81,10 +81,16 @@ const rawCdm = JSON.parse(readFileSync(opts["cdm-json"]!, "utf8"));
 const contractsBucket: Record<string, any> = Object.values(rawCdm.contracts ?? {})[0] ?? {};
 function abiFor(pkg: string): any[] {
     const file = RELEASE_ABI_FILES[pkg];
-    const release = file ? JSON.parse(readFileSync(`${opts["abi-dir"]}/${file}`, "utf8")) : undefined;
-    const abi = release ? (Array.isArray(release) ? release : release.abi) : contractsBucket[pkg]?.abi;
-    if (!Array.isArray(abi) || abi.length === 0)
-        throw new Error(`No ABI for ${pkg} in ${file ? opts["abi-dir"] : opts["cdm-json"]}`);
+    let abi = contractsBucket[pkg]?.abi;
+    if (file) {
+        const path = `${opts["abi-dir"]}/${file}`;
+        const release = JSON.parse(readFileSync(path, "utf8"));
+        abi = Array.isArray(release) ? release : release.abi;
+    }
+    if (!Array.isArray(abi) || abi.length === 0) {
+        const source = file ? opts["abi-dir"] : opts["cdm-json"];
+        throw new Error(`No ABI for ${pkg} in ${source}`);
+    }
     return abi;
 }
 
