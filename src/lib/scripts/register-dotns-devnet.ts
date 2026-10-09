@@ -68,9 +68,18 @@ const DOTNS_DEVNET: Record<string, HexString> = {
     "@dotns/name-escrow": "0xb50269322010DeeF2afb162c009Caf897971952C",
 };
 
-// Packages the dotns-sdk cdm.json does not carry: ABI read from a dotns release ABI directory
-// (dotns-abis-<tag>.zip unpacked, one <Contract>.json per contract).
+// ABI source per package: the dotns release ABI directory (dotns-abis-<tag>.zip unpacked, one
+// <Contract>.json per contract) for every contract the release ships; Multicall3 is not part of it
+// and keeps the dotns-sdk cdm.json snapshot.
 const RELEASE_ABI_FILES: Record<string, string> = {
+    "@dotns/registrar-controller": "DotnsRegistrarController.json",
+    "@dotns/registrar": "DotnsRegistrar.json",
+    "@dotns/registry": "DotnsRegistry.json",
+    "@dotns/pop-rules": "PopRules.json",
+    "@dotns/resolver": "DotnsResolver.json",
+    "@dotns/reverse-resolver": "DotnsReverseResolver.json",
+    "@dotns/content-resolver": "DotnsContentResolver.json",
+    "@dotns/store-factory": "StoreFactory.json",
     "@dotns/protocol-registry": "DotnsProtocolRegistry.json",
     "@dotns/pop-controller": "DotnsPopController.json",
     "@dotns/pop-resolver": "DotnsPopResolver.json",
@@ -147,17 +156,30 @@ const registry: any = await createContractFromClient(
 
 type Step = { name: string; address: HexString; action: "publish" | "skip"; note: string };
 const plan: Step[] = [];
+// Same address, different ABI (an in-place contract upgrade) also appends a version.
+async function publishedAbi(pkg: string): Promise<unknown> {
+    const q = assertQuery(await registry.getMetadataUri.query(pkg), `getMetadataUri(${pkg})`);
+    const cid = unwrapOption<string>(q.value);
+    if (!cid) return undefined;
+    const res = await fetch(`${preset.ipfsGatewayUrl}/${cid}`);
+    if (!res.ok) throw new Error(`Fetching ${pkg} metadata ${cid}: HTTP ${res.status}`);
+    return ((await res.json()) as { abi?: unknown }).abi;
+}
+
 for (const [pkg, addr] of Object.entries(DOTNS_DEVNET)) {
     const q = assertQuery(await registry.getAddress.query(pkg), `getAddress(${pkg})`);
     const cur = unwrapOption<string>(q.value);
-    if (cur && lc(cur) === lc(addr))
+    if (cur && lc(cur) === lc(addr)) {
+        const abiChanged = JSON.stringify(await publishedAbi(pkg)) !== JSON.stringify(abiFor(pkg));
         plan.push({
             name: pkg,
             address: addr,
-            action: "skip",
-            note: "already registered to this address",
+            action: abiChanged ? "publish" : "skip",
+            note: abiChanged
+                ? "same address, ABI changed → append new version"
+                : "already registered to this address with this ABI",
         });
-    else if (cur)
+    } else if (cur)
         plan.push({
             name: pkg,
             address: addr,
