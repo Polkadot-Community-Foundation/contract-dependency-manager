@@ -13,7 +13,7 @@
  *   cdm-builder 3.1.6 vs npm 3.1.5). An external-deps tarball would therefore depend on
  *   UNPUBLISHED versions and be uninstallable. Bundling everything into a single node-runnable
  *   `dist/cli.js` (the same approach `dotns-cli` uses) sidesteps that entirely AND bakes in the
- *   in-tree cdm-env carrying the deployed Summit/W3S registry address. The bundle is self-contained
+ *   in-tree cdm-env carrying the PCF devnet registry address. The bundle is self-contained
  *   (zero runtime deps; the only wasm is inlined hashing — no external .wasm, smoldot is not used).
  *
  * What it does:
@@ -75,7 +75,7 @@ const pkg = {
     name: PUBLISHED_NAME,
     version: PUBLISHED_VERSION,
     description:
-        "Contract Dependency Manager CLI (cdm) for PolkaVM smart contracts — builds, installs, and deploys CDM libraries. Ships with the Summit/W3S network preset.",
+        "Contract Dependency Manager CLI (cdm) for PolkaVM smart contracts — builds, installs, and deploys CDM libraries. Ships with the PCF devnet network preset.",
     type: "module",
     license: "MIT",
     bin: { cdm: "./dist/cli.js" },
@@ -89,7 +89,7 @@ const pkg = {
     },
     homepage:
         "https://github.com/Polkadot-Community-Foundation/contract-dependency-manager/tree/main/src/apps/cli",
-    keywords: ["cdm", "polkadot", "polkavm", "pallet-revive", "smart-contracts", "cli", "summit"],
+    keywords: ["cdm", "polkadot", "polkavm", "pallet-revive", "smart-contracts", "cli", "devnet"],
 };
 writeFileSync(join(stage, "package.json"), JSON.stringify(pkg, null, 4) + "\n");
 
@@ -97,7 +97,7 @@ const readme = `# ${PUBLISHED_NAME}
 
 The **Contract Dependency Manager** CLI (\`cdm\`) for PolkaVM smart contracts — build, install, and
 deploy CDM contract libraries. This is the Polkadot Community Foundation distribution; it ships with
-the **Summit / W3S** network preset (the deployed \`ContractRegistry\` address) baked in.
+the PCF **devnet** network preset (its \`ContractRegistry\` address and IPFS gateway) baked in.
 
 \`\`\`sh
 npm install -g ${PUBLISHED_NAME}

@@ -15,8 +15,7 @@ export default function HomePage() {
     const [query, setQuery] = useState("");
     const navigate = useNavigate();
 
-    const installCmd =
-        "curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-manager/main/install.sh | bash";
+    const installCmd = "npm install -g @polkadot-community-foundation/cdm-cli";
     const error = networkError || registryError;
 
     const handleSearch = (value: string) => {
