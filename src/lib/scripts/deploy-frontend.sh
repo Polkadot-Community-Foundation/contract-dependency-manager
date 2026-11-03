@@ -13,7 +13,7 @@ Examples:
   src/lib/scripts/deploy-frontend.sh "$CDM_DEPLOY_SURI" --tag frontend
 
 Environment:
-  BULLETIN_DEPLOY_ENV       Target deploy env. Default: summit
+  BULLETIN_DEPLOY_ENV       Target deploy env. Default: devnet
   SKIP_BULLETIN_INSTALL     Set to 1 to skip the global npm install of the CLI
 EOF
 }
@@ -35,9 +35,9 @@ ENV_ID="${BULLETIN_DEPLOY_ENV:-devnet}"
 cd "$ROOT"
 
 if [[ "${SKIP_BULLETIN_INSTALL:-0}" != "1" ]]; then
-    # PCF fork of bulletin-deploy (renamed); pinned to a known-good Summit-capable
-    # release that ships under the @polkadot-community-foundation scope.
-    npm install -g @polkadot-community-foundation/polkadot-app-deploy@0.12.1
+    # PCF fork of bulletin-deploy (renamed). Its built-in environments carry the
+    # DotNS contract addresses, so the pin must match the DotNS set live on devnet.
+    npm install -g @polkadot-community-foundation/polkadot-app-deploy@0.22.1
 fi
 
 pnpm turbo build --filter=@parity/cdm-frontend
