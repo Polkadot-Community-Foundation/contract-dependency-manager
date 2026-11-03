@@ -28,7 +28,11 @@ import {
 import { getAccount } from "@parity/cdm-utils/accounts";
 import { MetadataPublisher, type Metadata } from "@parity/cdm-builder";
 import { CONTRACTS_REGISTRY_ABI } from "@parity/cdm-builder/abi";
-import { createContractFromClient } from "@parity/product-sdk-contracts";
+import {
+    createContractFromClient,
+    createContractRuntimeFromClient,
+    ensureContractAccountMapped,
+} from "@parity/product-sdk-contracts";
 import type { HexString } from "polkadot-api";
 
 const { values: opts } = parseArgs({
@@ -138,10 +142,16 @@ const chainClient = await createCdmChainClient(chainName);
 await chainClient.raw.assetHub.getChainSpecData();
 console.log("Connected.\n");
 if (!dryRun && signer) {
-    try {
-        await chainClient.assetHub.tx.Revive.map_account().signAndSubmit(signer);
-    } catch {
-        /* mapped */
+    const mapping = await ensureContractAccountMapped(
+        createContractRuntimeFromClient(chainClient.raw.assetHub, chainClient.descriptors.assetHub),
+        ss58Address(signer.publicKey),
+        signer,
+        { timeoutMs: 300_000 },
+    );
+    if (mapping.ok) {
+        console.log(mapping.value === null ? "Account already mapped.\n" : "Account mapped.\n");
+    } else {
+        console.warn(`Account mapping failed, continuing: ${mapping.error.message}`);
     }
 }
 
