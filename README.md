@@ -144,11 +144,11 @@ This updates `cdm.json`, stores ABI/metadata artifacts under project-local `.cdm
 Install the product-sdk app/runtime packages:
 
 ```bash
-pnpm add @parity/product-sdk-chain-client@^0.13.4 \
-  @parity/product-sdk-contracts@^0.11.4 \
+pnpm add @parity/product-sdk-chain-client@^0.13.10 \
+  @parity/product-sdk-contracts@^0.11.10 \
   @parity/product-sdk-descriptors@^0.14.0 \
-  @parity/product-sdk-signer@^0.17.4 \
-  @parity/product-sdk-tx@^0.5.4 \
+  @parity/product-sdk-signer@^0.17.10 \
+  @parity/product-sdk-tx@^0.5.10 \
   polkadot-api@^3.3.0
 ```
 
